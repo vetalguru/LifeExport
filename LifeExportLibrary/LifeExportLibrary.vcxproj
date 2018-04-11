@@ -99,7 +99,8 @@
       </Version>
     </Link>
     <PreBuildEvent>
-      <Command>PowerShell -File $(SolutionDir)tools\build_version.ps1</Command>
+      <Command>PowerShell -File $(SolutionDir)tools\build_version.ps1
+PowerShell Copy-Item -Path $(ProjectDir)BUILD -Destination $(OutputPath)</Command>
     </PreBuildEvent>
     <PreBuildEvent>
       <Message>
@@ -159,7 +160,8 @@
       </Version>
     </Link>
     <PreBuildEvent>
-      <Command>PowerShell -File $(SolutionDir)tools\build_version.ps1</Command>
+      <Command>PowerShell -File $(SolutionDir)tools\build_version.ps1
+PowerShell Copy-Item -Path $(ProjectDir)BUILD -Destination $(OutputPath)</Command>
     </PreBuildEvent>
     <PreBuildEvent>
       <Message>
