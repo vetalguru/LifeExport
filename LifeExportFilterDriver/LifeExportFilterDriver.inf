@@ -3,30 +3,83 @@
 ;
 
 [Version]
-Signature="$WINDOWS NT$"
-Class=System
-ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
-Provider=%ManufacturerName%
-DriverVer=
-CatalogFile=LifeExportFilterDriver.cat
+Signature                                   = "$WINDOWS NT$"
+Class                                       = "ContentScreener"                         ;This is determined by the work this filter driver does
+ClassGuid                                   = {3e3f0674-c83c-4558-bb26-9820e1eba5c5}    ;This value is determined by the Class
+Provider                                    = %ProviderString%
+DriverVer                                   = 03/16/2018,1.0.0.1
+CatalogFile                                 = %DriverName%.cat
 
 [DestinationDirs]
-DefaultDestDir = 12
+DefaultDestDir                              = 12
+LifeExportFilterDriver.CopyDriverFiles      = 12                                        ;%windir%\system32\drivers
+LifeExportFilterDriver.DeleteDriverFiles    = 12                                        ;%windir%\system32\drivers
+
+[DefaultInstall]
+OptionDesc                                  = %ServiceDescription%
+CopyFiles                                   = LifeExportFilterDriver.CopyDriverFiles
+
+[DefaultInstall.Services]
+AddService                                  = %ServiceName%,,LifeExportFilterDriver.Service
 
 
-[SourceDisksNames]
-1 = %DiskName%,,,""
+[DefaultUninstall]
+DelFiles                                    = LifeExportFilterDriver.DeleteDriverFiles
+
+[DefaultUninstall.Services]
+DelService                                  = %ServiceName%,0x200                       ;Ensure service is stopped before deleting
+
+
+;
+; Services Section
+;
+[LifeExportFilterDriver.Service]
+DisplayName                                 = %ServiceName%
+Description                                 = %ServiceDescription%
+ServiceBinary                               = %12%\%DriverName%.sys                     ;%windir%\system32\drivers
+Dependencies                                = "FltMgr"
+ServiceType                                 = 2                                         ;SERVICE_FILE_SYSTEM_DRIVER
+StartType                                   = 3                                         ;SERVICE_DEMAND_START
+ErrorControl                                = 1                                         ;SERVICE_ERROR_NORMAL
+LoadOrderGroup                              = "LifeExportFilterDriver"
+AddReg                                      = LifeExportFilterDriver.AddRegistry
+
+
+;
+; Registry Modifications
+;
+[LifeExportFilterDriver.AddRegistry]
+HKR,,"DebugFlags",0x00010001,0xc
+HKR,"Instances","DefaultInstance",0x00000000,%DefaultInstance%
+HKR,"Instances\"%Instance1.Name%,"Altitude",0x00000000,%Instance1.Altitude%
+HKR,"Instances\"%Instance1.Name%,"Flags",0x00010001,%Instance1.Flags%
+HKR,,"SupportedFeatures",0x00010001,0x3
+
+
+[LifeExportFilterDriver.CopyDriverFiles]
+%DriverName%.sys,,,0x00002000   ; COPYFLT_NOPRUNE
+
+[LifeExportFilterDriver.DeleteDriverFiles]
+%DriverName%.sys,,,0x00010001   ; DELFLT_IN_USE | DELFLT_IN_USE1
 
 [SourceDisksFiles]
+LifeExportFilterDriver.sys          = 1,,
 
+[SourceDisksNames]
+1 = %DiskName%,,,
 
-[Manufacturer]
-%ManufacturerName%=Standard,NT$ARCH$
-
-[Standard.NT$ARCH$]
-
-
+;;
+;; String Section
+;;
 [Strings]
-ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
-ClassName=""
-DiskName="LifeExportFilterDriver Source Disk"
+ProviderString                              = "Quest Software inc."
+ServiceDescription                          = "Quest Rapid Recovery Life Export Mini-Filter Driver"
+ServiceName                                 = "LifeExportFilterDriver"
+DriverName                                  = "LifeExportFilterDriver"
+DiskName                                    = "Quest Rapid Recovery Life Export  Install Disk"
+
+;Instances specific information
+DefaultInstance                             = "LifeExportFilterDriver Instance"
+Instance1.Name                              = "LifeExportFilterDriver Instance"
+Instance1.Altitude                          = "265010"
+Instance1.Flags                             = 0x0                                       ;Allow all attachments
