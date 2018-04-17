@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "version.h"
-
+#include "common.h"
 
 /*
 * GLOBAL VARIABLES
@@ -17,76 +17,10 @@ const std::wstring BUILD_VERSION_FILE_NAME (L"BUILD");
 
 
 
-
-const std::wstring execCommand(const std::wstring &aCmd, const unsigned int aTimeSlice = 20 /* 20 ms */ )
- {
-    if (aCmd.empty())
-        return std::wstring();
-    
-    SECURITY_ATTRIBUTES sAttr = { sizeof(SECURITY_ATTRIBUTES) };
-    sAttr.bInheritHandle = TRUE;
-    sAttr.lpSecurityDescriptor = NULL;
-
-    // Create pipe to get result
-    HANDLE hPipeRead, hPipeWrite = NULL;
-    if (!::CreatePipe(&hPipeRead, &hPipeWrite, &sAttr, 0))
-        return std::wstring();
-
-    STARTUPINFOW startInfo = { sizeof(STARTUPINFOW) };
-    startInfo.dwFlags     = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
-    startInfo.hStdOutput  = hPipeWrite;
-    startInfo.hStdError   = hPipeWrite;
-    startInfo.wShowWindow = SW_HIDE;
-
-    PROCESS_INFORMATION procInfo = { 0 };
-
-    if (!::CreateProcessW(NULL, (LPWSTR)aCmd.c_str(), NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &startInfo, &procInfo))
-    {
-        ::CloseHandle(hPipeWrite);
-        ::CloseHandle(hPipeRead);
-        return std::wstring();
-    }
-
-    bool isProcerssEnded = false;
-    std::string asciiResult;
-    while(!isProcerssEnded)
-    {
-        isProcerssEnded = ::WaitForSingleObject(procInfo.hProcess, aTimeSlice) == WAIT_OBJECT_0;
-
-        while(true)
-        {
-            // Check avail bytes
-            DWORD availBytes = 0;
-            if (!::PeekNamedPipe(hPipeRead, NULL, 0, NULL, &availBytes, NULL))
-                break;
-
-            if (!availBytes)
-                break;
-
-            char buffer[1024];
-            ZeroMemory(buffer, 1024);
-            DWORD readed = 0;
-            if (!::ReadFile(hPipeRead, buffer, min(sizeof(buffer) - 1, availBytes), &readed, NULL))
-                break;
-
-            buffer[readed] = 0; // set end of string
-            asciiResult += std::string(buffer);
-        }
-    }
-
-    ::CloseHandle(hPipeWrite);
-    ::CloseHandle(hPipeRead);
-    ::CloseHandle(procInfo.hProcess);
-    ::CloseHandle(procInfo.hThread);
-
-    return std::wstring(asciiResult.begin(), asciiResult.end());
-}
-
-
 TEST(LifeExportLibrary_Simple, TryLoadLibrary)
 {
     // Load library
-    HINSTANCE dllInstance = ::LoadLibrary(LIFE_EXPORT_LIBRARY_NAME.c_str());
+    HINSTANCE dllInstance = ::LoadLibraryW(LIFE_EXPORT_LIBRARY_NAME.c_str());
     ASSERT_FALSE(dllInstance == NULL);
     
     if (dllInstance != NULL)
@@ -143,7 +77,13 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     ::CloseHandle(buildFile);
 
     // get revision version
-    std::wstring revision = execCommand(L"git rev-list --count HEAD", 5);
+    std::wstring revision;
+    DWORD errCode = execCommand(L"git rev-list --count HEAD", &revision, 5);
+    if (errCode != ERROR_SUCCESS)
+    {
+        FAIL();
+    }
+
     expectedRevisionVersion = std::stoi(revision);
 
 

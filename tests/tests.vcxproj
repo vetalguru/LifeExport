@@ -90,9 +90,10 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>
+      </PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)thirdparty\googletest\include;$(SolutionDir)thirdparty\googletest;$(SolutionDir)LifeExportLibrary;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)thirdparty\googletest\include;$(SolutionDir)thirdparty\googletest;$(SolutionDir)LifeExportLibrary;$(SolutionDir)LifeExportFilterDriver;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -100,12 +101,13 @@
       <AdditionalDependencies>Mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>powershell "$(TargetPath) | tee $(OutputPath)test_result.log"</Command>
+      <Command>PowerShell Start-Process -FilePath "$(TargetPath) | tee $(OutputPath)test_result.log"</Command>
       <Message>
       </Message>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>PowerShell Copy-Item -Path $(OutputPath)BUILD -Destination $(ProjectDir)</Command>
+      <Command>PowerShell Copy-Item -Path $(OutputPath)BUILD -Destination $(ProjectDir)
+PowerShell Copy-Item -Path $(OutputPath)LifeExportFilterDriver.inf -Destination $(ProjectDir)</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -148,9 +150,10 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>
+      </PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)thirdparty\googletest\include;$(SolutionDir)thirdparty\googletest;$(SolutionDir)LifeExportLibrary;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)thirdparty\googletest\include;$(SolutionDir)thirdparty\googletest;$(SolutionDir)LifeExportLibrary;$(SolutionDir)LifeExportFilterDriver;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -160,26 +163,26 @@
       <AdditionalDependencies>Mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>powershell "$(TargetPath) | tee $(OutputPath)test_result.log"</Command>
+      <Command>PowerShell Start-Process -FilePath "$(TargetPath) | tee $(OutputPath)test_result.log"</Command>
       <Message>
       </Message>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>PowerShell Copy-Item -Path $(OutputPath)BUILD -Destination $(ProjectDir)</Command>
+      <Command>PowerShell Copy-Item -Path $(OutputPath)BUILD -Destination $(ProjectDir)
+PowerShell Copy-Item -Path $(OutputPath)LifeExportFilterDriver.inf -Destination $(ProjectDir)</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ProjectReference Include="..\google_test_library\google_test_library.vcxproj">
       <Project>{d1b8fe1d-92a3-445d-a88f-4f0933dc6ae7}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\sample\sample.vcxproj">
-      <Project>{7a91c614-522e-4874-84de-fdaf21039159}</Project>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="tests.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="common.h" />
+    <ClInclude Include="LifeExportFilterDriver\Test_inf_file.h" />
     <ClInclude Include="LifeExportLibrary\Simple_tests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

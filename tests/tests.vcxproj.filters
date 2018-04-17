@@ -7,10 +7,17 @@
     <Filter Include="LifeExportLibrary">
       <UniqueIdentifier>{0d4c54c7-7f57-4001-a412-c330debf912f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="LifeExportFilterDriver">
+      <UniqueIdentifier>{0bd40798-b99a-4361-824d-cbfe97347b3b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="LifeExportLibrary\Simple_tests.h">
       <Filter>LifeExportLibrary</Filter>
     </ClInclude>
+    <ClInclude Include="LifeExportFilterDriver\Test_inf_file.h">
+      <Filter>LifeExportFilterDriver</Filter>
+    </ClInclude>
+    <ClInclude Include="common.h" />
   </ItemGroup>
 </Project>
