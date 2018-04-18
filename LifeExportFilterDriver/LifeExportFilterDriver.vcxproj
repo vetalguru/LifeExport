@@ -151,9 +151,12 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Callbacks.c" />
     <ClCompile Include="LifeExportFilterDriver.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Callbacks.h" />
+    <ClInclude Include="Common.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="LifeExportFilterDriver.h" />
   </ItemGroup>

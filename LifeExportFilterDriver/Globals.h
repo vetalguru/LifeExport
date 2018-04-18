@@ -4,6 +4,9 @@
 
 #include <fltKernel.h>
 #include "LifeExportFilterDriver.h"
+#include "Callbacks.h"
+
+
 
 
 //*************************************************************************
@@ -18,6 +21,22 @@ GLOBAL_FILTER_DATA GlobalData;
 
 
 //
+// operation registration
+//
+CONST FLT_OPERATION_REGISTRATION Callbacks[] =
+{
+    {
+        IRP_MJ_CREATE,
+        0,
+        AA_PreCreate,
+        NULL
+    },
+
+    { IRP_MJ_OPERATION_END }
+};
+
+
+//
 // This defines what we want to filter with FltMgr 
 //
 CONST FLT_REGISTRATION FilterRegistration = {
@@ -26,7 +45,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
     0,                           // Flags
 
     NULL,                        // Context Registration
-    NULL,                        // Operation Registration
+    Callbacks,                   // Operation Registration
 
     AA_Unload,                   // FilterUnload Callback
     NULL,                        // InstanceSetup Callback
@@ -38,6 +57,5 @@ CONST FLT_REGISTRATION FilterRegistration = {
     NULL,                        // GenerateDestinationFileName Callback 
     NULL                         // NormalizeNameComponent Callback
 };
-
 
 #endif _LIFE_EXPORT_FILTER_DRIVER_GLOBALS_H_
