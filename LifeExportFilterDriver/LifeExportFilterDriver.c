@@ -1,10 +1,53 @@
 #include "LifeExportFilterDriver.h"
 #include "Globals.h"
+#include "CommunicationPort.h"
+#include "Communication.h"
 
 
 //*************************************************************************
 //    Driver initialization and unload routines.
 //*************************************************************************
+
+
+//
+// operation registration
+//
+CONST FLT_OPERATION_REGISTRATION Callbacks[] =
+{
+	{
+		IRP_MJ_CREATE,
+		0,
+		AA_PreCreate,
+		NULL
+	},
+
+{ IRP_MJ_OPERATION_END }
+};
+
+
+//
+// This defines what we want to filter with FltMgr 
+//
+CONST FLT_REGISTRATION FilterRegistration = {
+	sizeof(FLT_REGISTRATION),    // Size
+	FLT_REGISTRATION_VERSION,    // Version
+	0,                           // Flags
+
+	NULL,                        // Context Registration
+	Callbacks,                   // Operation Registration
+
+	AA_Unload,                   // FilterUnload Callback
+	NULL,                        // InstanceSetup Callback
+	NULL,                        // InstanceQueryTeardown Callback
+	NULL,                        // InstanceTeardownStart Callback
+	NULL,                        // InstanceTeardownComplete Callback
+
+	NULL,                        // GenerateFileName Callback
+	NULL,                        // GenerateDestinationFileName Callback 
+	NULL                         // NormalizeNameComponent Callback
+};
+
+
 
 #ifndef ALLOC_PRAGMA
     #pragma alloc_text(INIT,  DriverEntry)
@@ -53,22 +96,70 @@ Return Value:
     {
         return status;
     }
-    
-    // Start filtering
-    status = FltStartFiltering(GlobalData.FilterHandle);
-    if (!NT_SUCCESS(status))
-    {
-        FltUnregisterFilter(GlobalData.FilterHandle);
-        GlobalData.FilterHandle = NULL;
 
-        return status;
-    }
+	// Create default security descriptor for FltCreateCommunicationPort
+	PSECURITY_DESCRIPTOR sd = NULL;
+	status = FltBuildDefaultSecurityDescriptor(&sd, FLT_PORT_ALL_ACCESS);
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
 
     // TODO: Create communication port server for alert
 
-    // TODO: Create comminication port server for CREATE messages
+    // Create comminication port server for CREATE messages
+	status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+	if (!NT_SUCCESS(status))
+	{
+		if (sd != NULL)
+		{
+			FltFreeSecurityDescriptor(sd);
+			sd = NULL;
+		}
+
+		if (GlobalData.FilterHandle != NULL)
+		{
+			FltUnregisterFilter(GlobalData.FilterHandle);
+			GlobalData.FilterHandle = NULL;
+		}
+
+		return status;
+	}
+
 
     // TODO: Create communication port server for READ messages
+
+
+	// Start filtering
+	status = FltStartFiltering(GlobalData.FilterHandle);
+	if (!NT_SUCCESS(status))
+	{
+		if (GlobalData.ServerPortCreate != NULL)
+		{
+			AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+		}
+
+		if (sd != NULL)
+		{
+			FltFreeSecurityDescriptor(sd);
+			sd = NULL;
+		}
+
+		if (GlobalData.FilterHandle != NULL)
+		{
+			FltUnregisterFilter(GlobalData.FilterHandle);
+			GlobalData.FilterHandle = NULL;
+		}
+
+		return status;
+	}
+
+
+	if (sd != NULL)
+	{
+		FltFreeSecurityDescriptor(sd);
+		sd = NULL;
+	}
 
     return status;
 }
@@ -102,7 +193,8 @@ Return Value:
 
     // TODO: Close comminication port server for READ message
 
-    // TODO: Close communication port server for CREATE messages
+    // Close communication port server for CREATE messages
+	AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
 
     // TODO: Close communication port server for alert messages
 
@@ -112,7 +204,5 @@ Return Value:
 
     // TODO: Free global data
 
-    NTSTATUS status = STATUS_SUCCESS;
-
-    return status;
+    return STATUS_SUCCESS;
 }

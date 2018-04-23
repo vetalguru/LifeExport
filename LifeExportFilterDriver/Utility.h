@@ -1,5 +1,5 @@
-#ifndef _LIFE_EXPORT_FILTER_COMMON_H_
-#define _LIFE_EXPORT_FILTER_COMMON_H_
+#ifndef _LIFE_EXPORT_FILTER_UTILITY_H_
+#define _LIFE_EXPORT_FILTER_UTILITY_H_
 
 
 #include <fltKernel.h>
@@ -54,5 +54,4 @@ Return Values:
 }
 
 
-#endif // _LIFE_EXPORT_FILTER_COMMON_H_
-
+#endif // _LIFE_EXPORT_FILTER_UTILITY_H_

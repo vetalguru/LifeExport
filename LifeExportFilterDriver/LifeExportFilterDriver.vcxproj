@@ -118,9 +118,13 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -138,11 +142,17 @@
     <Link>
       <AdditionalDependencies>FltMgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <EnablePREfast>true</EnablePREfast>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Link>
       <AdditionalDependencies>FltMgr.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <EnablePREfast>true</EnablePREfast>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Inf Include="LifeExportFilterDriver.inf" />
@@ -152,11 +162,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Callbacks.c" />
+    <ClCompile Include="CommunicationPort.c" />
     <ClCompile Include="LifeExportFilterDriver.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Callbacks.h" />
-    <ClInclude Include="Common.h" />
+    <ClInclude Include="Communication.h" />
+    <ClInclude Include="Utility.h" />
+    <ClInclude Include="CommunicationPort.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="LifeExportFilterDriver.h" />
   </ItemGroup>
