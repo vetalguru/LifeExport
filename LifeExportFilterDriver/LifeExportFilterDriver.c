@@ -18,7 +18,7 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] =
 		IRP_MJ_CREATE,
 		0,
 		AA_PreCreate,
-		NULL
+		AA_PostCreate
 	},
 
 { IRP_MJ_OPERATION_END }

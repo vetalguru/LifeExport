@@ -1,8 +1,6 @@
 #include "CommunicationPort.h"
 
 
-
-
 NTSTATUS
 AA_ConnectNotifyCallback(
 	_In_                             PFLT_PORT aClientPort,
@@ -150,6 +148,37 @@ AA_ConnectNotifyCallback(
 
 	PAGED_CODE();
 
+	PLIFE_EXPORT_CONNECTION_CONTEXT connectionContext = (PLIFE_EXPORT_CONNECTION_CONTEXT)aConnectionContext;
+	if (connectionContext == NULL)
+	{
+		return STATUS_INVALID_PARAMETER_3;
+	}
+
+	PLIFE_EXPORT_CONNECTION_TYPE connectionCookie = ExAllocatePoolWithTag(PagedPool,
+		sizeof(LIFE_EXPORT_CONNECTION_TYPE),
+		AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+	if (connectionCookie == NULL)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	*connectionCookie = connectionContext->Type;
+	switch (connectionContext->Type)
+	{
+		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+			{
+				GlobalData.ClientPortCreate = aClientPort;
+				*aConnectionCookie = connectionCookie;
+				break;
+			}
+		default:
+			{
+				ExFreePoolWithTag(connectionCookie, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+				*aConnectionCookie = NULL;
+				return STATUS_INVALID_PARAMETER_3;
+			}
+	}
+
 	return STATUS_SUCCESS;
 }
 
@@ -173,6 +202,11 @@ AA_MessageNotifyCallback(
 
 	PAGED_CODE();
 
+	if(aInputBuffer == NULL || aInputBufferSize == 0UL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
 	return STATUS_SUCCESS;
 }
 
@@ -182,7 +216,28 @@ AA_DisconnectNotifyCallback(
 	_In_opt_ PVOID aConnectionCookie
 )
 {
-	UNREFERENCED_PARAMETER(aConnectionCookie);
-
 	PAGED_CODE();
+
+	PLIFE_EXPORT_CONNECTION_TYPE connectionType = (PLIFE_EXPORT_CONNECTION_TYPE)aConnectionCookie;
+	if (connectionType == NULL)
+	{
+		return;
+	}
+
+	switch (*connectionType)
+	{
+		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+			{
+				FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+				GlobalData.ClientPortCreate = NULL;
+				break;
+			}
+		default:
+			{
+				return;
+			}
+	}
+
+	ExFreePoolWithTag(connectionType, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+	connectionType = NULL;
 }
