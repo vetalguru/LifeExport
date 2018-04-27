@@ -16,7 +16,7 @@ FilterCommunicationPort::~FilterCommunicationPort()
 }
 
 
-HRESULT FilterCommunicationPort::connect(const std::wstring& aPortName, const DWORD aOptions)
+HRESULT FilterCommunicationPort::connect(const std::wstring& aPortName, const DWORD aOptions, LPCVOID aContext, WORD aSizeOfContext)
 {
 	if (m_portHandle)
 	{
@@ -28,8 +28,8 @@ HRESULT FilterCommunicationPort::connect(const std::wstring& aPortName, const DW
 	HRESULT result = ::FilterConnectCommunicationPort(
 		m_portName.c_str(),
 		aOptions,
-		NULL,
-		NULL,
+		aContext,
+		aSizeOfContext,
 		NULL,
 		&m_portHandle);
 	if (FAILED(result))

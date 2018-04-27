@@ -13,7 +13,7 @@ class FilterCommunicationPort
 		FilterCommunicationPort();
 		~FilterCommunicationPort();
 
-		HRESULT connect(const std::wstring& aPortName, const DWORD aOptions);
+		HRESULT connect(const std::wstring& aPortName, const DWORD aOptions, LPCVOID aContext, WORD aSizeOfContext);
 		bool disconnect();
 
 		HRESULT sendMessage(LPVOID aInBuffer, DWORD aInBufferSize,
