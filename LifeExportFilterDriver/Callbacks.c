@@ -191,7 +191,7 @@ Return Value:
 		&fileContext);
 	if (status == STATUS_NOT_FOUND)
 	{
-		LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST notification = { 0 };
+		LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST request = { 0 };
 		AA_FILE_ID_INFO fileId;
 		status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &fileId);
 		if (!NT_SUCCESS(status))
@@ -206,15 +206,15 @@ Return Value:
 			}
 		}
 
-		RtlCopyMemory(&notification.FileId, &fileId, sizeof(fileId));
+		RtlCopyMemory(&request.FileId, &fileId, sizeof(fileId));
 
 		LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE response = { 0 };
-		ULONG reponseLength = sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE);
+		ULONG reponseLength = sizeof(response);
 
 		status = FltSendMessage(GlobalData.FilterHandle,
 			&GlobalData.ClientPortCreate,
-			&notification,
-			sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST),
+			&request,
+			sizeof(request),
 			&response,
 			&reponseLength,
 			NULL);
@@ -353,7 +353,7 @@ Return Value:
 	UNREFERENCED_PARAMETER(aCompletionContext);
 
 	//  Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
-	if ((aData->Iopb->IrpFlags & IRP_PAGING_IO)             ||
+	if ((aData->Iopb->IrpFlags & IRP_PAGING_IO) ||
 		(aData->Iopb->IrpFlags & IRP_SYNCHRONOUS_PAGING_IO) ||
 		IoGetTopLevelIrp())
 	{
@@ -365,6 +365,57 @@ Return Value:
 		return FLT_PREOP_DISALLOW_FASTIO;
 	}
 
+	if (GlobalData.ServerPortRead == NULL)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	if (GlobalData.ClientPortRead == NULL)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	PAA_FILE_CONTEXT fileContext = NULL;
+
+	NTSTATUS status = FltGetFileContext(aData->Iopb->TargetInstance,
+		aData->Iopb->TargetFileObject,
+		&fileContext);
+	if (!NT_SUCCESS(status))
+	{
+		// It is not life exported file
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	LIFE_EXPORT_READ_NOTIFICATION_REQUEST request = { 0 };
+	RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
+	request.BlockFileOffset = aData->Iopb->Parameters.Read.ByteOffset.QuadPart;
+	request.BlockLength = aData->Iopb->Parameters.Read.Length;
+
+	LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+	ULONG responseLength = sizeof(response);
+	status = FltSendMessage(GlobalData.FilterHandle,
+		&GlobalData.ClientPortRead,
+		&request,
+		sizeof(request),
+		&response,
+		&responseLength,
+		NULL);
+	if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+	{
+		if (status == STATUS_PORT_DISCONNECTED)
+		{
+			FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+			GlobalData.ClientPortRead = NULL;
+			return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		}
+
+		if (status != STATUS_TIMEOUT)
+		{
+			return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		}
+
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }

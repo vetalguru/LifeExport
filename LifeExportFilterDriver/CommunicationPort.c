@@ -58,16 +58,22 @@ AA_CreateCommunicationPort(
 	switch (aConnectionType)
 	{
 		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
-			{
-				portName = AA_CREATE_PORT_NAME;
-				serverPort = &GlobalData.ServerPortCreate;
-				break;
-			}
-		default:
-			{
-				FLT_ASSERTMSG("No such connection type\n", FALSE);
-				return STATUS_INVALID_PARAMETER_2;
-			}
+		{
+			portName = AA_CREATE_PORT_NAME;
+			serverPort = &GlobalData.ServerPortCreate;
+			break;
+		}
+		case LIFE_EXPORT_READ_CONNECTION_TYPE:
+		{
+			portName = AA_READ_PORT_NAME;
+			serverPort = &GlobalData.ServerPortRead;
+			break;
+		}
+		default:		{
+			FLT_ASSERTMSG("No such connection type\n", FALSE);
+			return STATUS_INVALID_PARAMETER_2;
+		}
+
 	}
 
 	UNICODE_STRING strPortName;
@@ -105,6 +111,11 @@ AA_CloseCommunicationPort(
 		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
 		{
 			serverPort = &GlobalData.ServerPortCreate;
+			break;
+		}
+		case LIFE_EXPORT_READ_CONNECTION_TYPE:
+		{
+			serverPort = &GlobalData.ServerPortRead;
 			break;
 		}
 		default:
@@ -166,17 +177,23 @@ AA_ConnectNotifyCallback(
 	switch (connectionContext->Type)
 	{
 		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
-			{
-				GlobalData.ClientPortCreate = aClientPort;
-				*aConnectionCookie = connectionCookie;
-				break;
-			}
+		{
+			GlobalData.ClientPortCreate = aClientPort;
+			*aConnectionCookie = connectionCookie;
+			break;
+		}
+		case LIFE_EXPORT_READ_CONNECTION_TYPE:
+		{
+			GlobalData.ClientPortRead = aClientPort;
+			*aConnectionCookie = connectionCookie;
+			break;
+		}
 		default:
-			{
-				ExFreePoolWithTag(connectionCookie, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
-				*aConnectionCookie = NULL;
-				return STATUS_INVALID_PARAMETER_3;
-			}
+		{
+			ExFreePoolWithTag(connectionCookie, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+			*aConnectionCookie = NULL;
+			return STATUS_INVALID_PARAMETER_3;
+		}
 	}
 
 	return STATUS_SUCCESS;
@@ -227,15 +244,21 @@ AA_DisconnectNotifyCallback(
 	switch (*connectionType)
 	{
 		case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
-			{
-				FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
-				GlobalData.ClientPortCreate = NULL;
-				break;
-			}
+		{
+			FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+			GlobalData.ClientPortCreate = NULL;
+			break;
+		}
+		case LIFE_EXPORT_READ_CONNECTION_TYPE:
+		{
+			FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+			GlobalData.ClientPortRead = NULL;
+			break;
+		}
 		default:
-			{
-				return;
-			}
+		{
+			return;
+		}
 	}
 
 	ExFreePoolWithTag(connectionType, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);

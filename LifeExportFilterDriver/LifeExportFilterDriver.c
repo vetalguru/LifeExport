@@ -162,17 +162,45 @@ Return Value:
 		return status;
 	}
 
+    // Create communication port server for READ messages
+	status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_READ_CONNECTION_TYPE);
+	if (!NT_SUCCESS(status))
+	{
+		if (GlobalData.ServerPortCreate != NULL)
+		{
+			AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+		}
 
-    // TODO: Create communication port server for READ messages
+		if (sd != NULL)
+		{
+			FltFreeSecurityDescriptor(sd);
+			sd = NULL;
+		}
+
+		if (GlobalData.FilterHandle != NULL)
+		{
+			FltUnregisterFilter(GlobalData.FilterHandle);
+			GlobalData.FilterHandle = NULL;
+		}
+
+		return status;
+	}
 
 
 	// Start filtering
 	status = FltStartFiltering(GlobalData.FilterHandle);
 	if (!NT_SUCCESS(status))
 	{
+		if (GlobalData.ServerPortRead != NULL)
+		{
+			AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
+			GlobalData.ServerPortRead = NULL;
+		}
+
 		if (GlobalData.ServerPortCreate != NULL)
 		{
 			AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+			GlobalData.ServerPortCreate = NULL;
 		}
 
 		if (sd != NULL)
@@ -227,10 +255,13 @@ Return Value:
     PAGED_CODE();
     UNREFERENCED_PARAMETER(aFlags);
 
-    // TODO: Close comminication port server for READ message
+    // Close comminication port server for READ message
+	AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
+	GlobalData.ServerPortRead = NULL;
 
     // Close communication port server for CREATE messages
 	AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+	GlobalData.ServerPortCreate = NULL;
 
     // TODO: Close communication port server for alert messages
 
