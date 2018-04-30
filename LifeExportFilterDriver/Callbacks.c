@@ -2,12 +2,14 @@
 #include "Globals.h"
 #include "Communication.h"
 #include "Utility.h"
+#include "Context.h"
 
 
 
 #ifdef ALLOC_PRAGMA
 	#pragma alloc_text(PAGE, AA_PreCreate)
 	#pragma alloc_text(PAGE, AA_PostCreate)
+	#pragma alloc_text(POAGE, AA_PreClose)
 #endif
 
 
@@ -177,47 +179,144 @@ Return Value:
 		return FLT_POSTOP_FINISHED_PROCESSING;
 	}
 
-	LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST notification = { 0 };
-	status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &notification.FileId);
-	if (!NT_SUCCESS(status))
+	// Check if file context supported
+	if (!FltSupportsFileContexts(aFltObjects->FileObject))
 	{
-		if (status == STATUS_POSSIBLE_DEADLOCK)
-		{
-			AA_SET_INVALID_FILE_REFERENCE(notification.FileId);
-		}
-		else
-		{
-			return FLT_POSTOP_FINISHED_PROCESSING;
-		}
+		return FLT_POSTOP_FINISHED_PROCESSING;
 	}
 
-	LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE response = { 0 };
-	ULONG reponseLength = sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE);
-
-	status = FltSendMessage(GlobalData.FilterHandle,
-		&GlobalData.ClientPortCreate,
-		&notification,
-		sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST),
-		&response,
-		&reponseLength,
-		NULL);
-	if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+	PAA_FILE_CONTEXT fileContext = NULL;
+	status = FltGetFileContext(aData->Iopb->TargetInstance,
+		aData->Iopb->TargetFileObject,
+		&fileContext);
+	if (status == STATUS_NOT_FOUND)
 	{
-		if (status == STATUS_PORT_DISCONNECTED)
+		LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST notification = { 0 };
+		AA_FILE_ID_INFO fileId;
+		status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &fileId);
+		if (!NT_SUCCESS(status))
 		{
-			FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
-			GlobalData.ClientPortCreate = NULL;
-			return FLT_PREOP_SUCCESS_NO_CALLBACK;
-		}
-			
-		if (status != STATUS_TIMEOUT)
-		{
-			return FLT_PREOP_SUCCESS_NO_CALLBACK;
+			if (status == STATUS_POSSIBLE_DEADLOCK)
+			{
+				AA_SET_INVALID_FILE_REFERENCE(fileId);
+			}
+			else
+			{
+				return FLT_POSTOP_FINISHED_PROCESSING;
+			}
 		}
 
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		RtlCopyMemory(&notification.FileId, &fileId, sizeof(fileId));
+
+		LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE response = { 0 };
+		ULONG reponseLength = sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE);
+
+		status = FltSendMessage(GlobalData.FilterHandle,
+			&GlobalData.ClientPortCreate,
+			&notification,
+			sizeof(LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST),
+			&response,
+			&reponseLength,
+			NULL);
+		if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+		{
+			if (status == STATUS_PORT_DISCONNECTED)
+			{
+				FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+				GlobalData.ClientPortCreate = NULL;
+				return FLT_POSTOP_FINISHED_PROCESSING;
+			}
+
+			if (status != STATUS_TIMEOUT)
+			{
+				return FLT_POSTOP_FINISHED_PROCESSING;
+			}
+
+			return FLT_POSTOP_FINISHED_PROCESSING;
+		}
+
+		if (response.ConnectionResult == CREATE_RESULT_EXPORT_FILE)
+		{
+			// Need to create a context for the exported file if it is not created
+			AA_CreateFileContext(&fileContext);
+			if (!NT_SUCCESS(status))
+			{
+				return FLT_POSTOP_FINISHED_PROCESSING;
+			}
+
+			RtlZeroMemory(fileContext, sizeof(AA_FILE_CONTEXT));
+			RtlCopyMemory(&fileContext->FileID, &fileId, sizeof(fileId));
+
+			status = FltSetFileContext(aData->Iopb->TargetInstance,
+				aData->Iopb->TargetFileObject,
+				FLT_SET_CONTEXT_KEEP_IF_EXISTS,
+				fileContext,
+				NULL);
+			if (!NT_SUCCESS(status))
+			{
+				FltReleaseContext(fileContext);
+			}
+
+			if (status != STATUS_FLT_CONTEXT_ALREADY_DEFINED)
+			{
+				//  FltSetFileContext failed for a reason other than the context already
+				//  existing on the file. So the object now does not have any context set
+				//  on it. So we return failure to the caller.
+				return FLT_POSTOP_FINISHED_PROCESSING;
+			}
+		}
 	}
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
+
+FLT_PREOP_CALLBACK_STATUS
+AA_PreClose(
+	_Inout_                        PFLT_CALLBACK_DATA    aData,
+	_In_                           PCFLT_RELATED_OBJECTS aFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID                 *aCompletionContext
+)
+/*++
+
+Routine Description:
+
+	Pre-close callback. Make the file context persistent in the volatile cache.
+	If the file is transacted, it will be synced at KTM notification callback
+	if committed.
+
+Arguments:
+
+	aData - Pointer to the filter callbackData that is passed to us.
+
+	aFltObjects - Pointer to the FLT_RELATED_OBJECTS data structure containing
+	opaque handles to this filter, instance, its associated volume and
+	file object.
+
+	aCompletionContext - If this callback routine returns FLT_PREOP_SUCCESS_WITH_CALLBACK or
+	FLT_PREOP_SYNCHRONIZE, this parameter is an optional context pointer to be passed to
+	the corresponding post-operation callback routine. Otherwise, it must be NULL.
+
+Return Value:
+
+	The return value is the status of the operation.
+
+--*/
+{
+	UNREFERENCED_PARAMETER(aData);
+	UNREFERENCED_PARAMETER(aCompletionContext);
+
+	PAGED_CODE();
+
+	// Check file context and release it if it is present
+	PAA_FILE_CONTEXT fileContext = NULL;
+	NTSTATUS status = FltGetFileContext(aFltObjects->Instance,
+		aFltObjects->FileObject,
+		&fileContext);
+	if (NT_SUCCESS(status))
+	{
+		FltReleaseContext(fileContext);
+	}
+
+	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+}

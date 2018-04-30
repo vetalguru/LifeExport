@@ -150,6 +150,7 @@ Return Value:
 }
 
 
+FORCEINLINE
 LONG
 AA_ExceptionFilter(
 	_In_ PEXCEPTION_POINTERS aExceptionPointer,
@@ -172,6 +173,7 @@ AA_ExceptionFilter(
 }
 
 
+FORCEINLINE
 NTSTATUS
 AA_GetFileEncrypted(
 	_In_   PFLT_INSTANCE aInstance,
@@ -215,6 +217,7 @@ Return Value:
 }
 
 
+FORCEINLINE
 BOOLEAN
 AA_IsStreamAlternate(
 	_Inout_ PFLT_CALLBACK_DATA aData

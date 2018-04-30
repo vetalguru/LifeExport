@@ -2,6 +2,7 @@
 #include "Globals.h"
 #include "CommunicationPort.h"
 #include "Communication.h"
+#include "Context.h"
 
 
 //*************************************************************************
@@ -21,7 +22,35 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] =
 		AA_PostCreate
 	},
 
-{ IRP_MJ_OPERATION_END }
+	{
+		IRP_MJ_CLOSE,
+		0,
+		AA_PreClose,
+		NULL
+	},
+
+	{
+		IRP_MJ_OPERATION_END
+	}
+
+};
+
+
+// Context registration structure
+CONST FLT_CONTEXT_REGISTRATION ContextRegistration[] =
+{
+	{
+		FLT_FILE_CONTEXT,
+		0,
+		AA_FileContextCleanup,
+		sizeof(AA_FILE_CONTEXT),
+		AA_FILE_CONTEXT_TAG
+	},
+
+	{
+		FLT_CONTEXT_END
+	}
+
 };
 
 
@@ -33,7 +62,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
 	FLT_REGISTRATION_VERSION,    // Version
 	0,                           // Flags
 
-	NULL,                        // Context Registration
+	ContextRegistration,         // Context Registration
 	Callbacks,                   // Operation Registration
 
 	AA_Unload,                   // FilterUnload Callback
@@ -49,7 +78,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
 
 
 
-#ifndef ALLOC_PRAGMA
+#ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT,  DriverEntry)
     #pragma alloc_text(PAGED, AA_Unload)
 #endif

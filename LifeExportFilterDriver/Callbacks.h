@@ -23,5 +23,12 @@ AA_PostCreate(
 	_In_     FLT_POST_OPERATION_FLAGS aFlags
 );
 
+FLT_PREOP_CALLBACK_STATUS
+AA_PreClose(
+	_Inout_                        PFLT_CALLBACK_DATA    aData,
+	_In_                           PCFLT_RELATED_OBJECTS aFltObjects,
+	_Flt_CompletionContext_Outptr_ PVOID                 *aCompletionContext
+);
 
-#endif _LIFE_EXPORT_FILTER_CALLBACKS_H_
+
+#endif // _LIFE_EXPORT_FILTER_CALLBACKS_H_
