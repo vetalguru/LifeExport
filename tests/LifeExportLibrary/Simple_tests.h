@@ -13,7 +13,7 @@
 * GLOBAL VARIABLES
 */
 const std::wstring LIFE_EXPORT_LIBRARY_NAME(L"LifeExportLibrary.dll");
-const std::wstring BUILD_VERSION_FILE_NAME (L"BUILD");
+const std::wstring BUILD_VERSION_FILE_NAME(L"BUILD");
 
 
 
@@ -22,7 +22,7 @@ TEST(LifeExportLibrary_Simple, TryLoadLibrary)
     // Load library
     HINSTANCE dllInstance = ::LoadLibraryW(LIFE_EXPORT_LIBRARY_NAME.c_str());
     ASSERT_FALSE(dllInstance == NULL);
-    
+
     if (dllInstance != NULL)
     {
         // Unload library
@@ -39,9 +39,9 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     //
     // Get expected values
     //
-    DWORD expectedMajorVersion    = VERSION_MAJOR;
-    DWORD expectedMinorVersion    = VERSION_MINOR;
-    DWORD expectedBuildVersion    = 0; // this can be changed
+    DWORD expectedMajorVersion = VERSION_MAJOR;
+    DWORD expectedMinorVersion = VERSION_MINOR;
+    DWORD expectedBuildVersion = 0; // this can be changed
     DWORD expectedRevisionVersion = 0; // this can be changed
 
     // Read build version
@@ -71,7 +71,7 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     std::string buildNumStr(buildNumBuffer.begin(), buildNumBuffer.end());
     buildNumStr = buildNumStr.substr(2); // remove first 2 chars
     buildNumStr.erase(std::remove(buildNumStr.begin(), buildNumStr.end(), '\0'), buildNumStr.end());
-    
+
     expectedBuildVersion = std::stoi(buildNumStr);
 
     ::CloseHandle(buildFile);
@@ -90,9 +90,9 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     //
     // Get resul values
     //
-    DWORD resultMajorVersion    = 0;
-    DWORD resultMinorVersion    = 0;
-    DWORD resultBuildVersion    = 0;
+    DWORD resultMajorVersion = 0;
+    DWORD resultMinorVersion = 0;
+    DWORD resultBuildVersion = 0;
     DWORD resultRevisionVersion = 0;
 
     DWORD versionHandle = 0;
@@ -105,7 +105,7 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     res = ::GetFileVersionInfoW(LIFE_EXPORT_LIBRARY_NAME.c_str(), versionHandle, versionDataSize, versionData);
     if (!res)
     {
-        delete [] versionData;
+        delete[] versionData;
         versionData = NULL;
 
         FAIL();
@@ -123,10 +123,10 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
     }
 
     VS_FIXEDFILEINFO *fileInfo = (VS_FIXEDFILEINFO *)buffer;
-    resultMajorVersion    = (fileInfo->dwFileVersionMS >> 16) & 0xffff;
-    resultMinorVersion    = (fileInfo->dwFileVersionMS >>  0) & 0xffff;
-    resultBuildVersion    = (fileInfo->dwFileVersionLS >> 16) & 0xffff;
-    resultRevisionVersion = (fileInfo->dwFileVersionLS >>  0) & 0xffff;
+    resultMajorVersion = (fileInfo->dwFileVersionMS >> 16) & 0xffff;
+    resultMinorVersion = (fileInfo->dwFileVersionMS >> 0) & 0xffff;
+    resultBuildVersion = (fileInfo->dwFileVersionLS >> 16) & 0xffff;
+    resultRevisionVersion = (fileInfo->dwFileVersionLS >> 0) & 0xffff;
 
     delete[] versionData;
     versionData = NULL;
@@ -148,3 +148,4 @@ TEST(LifeExportLibrary_Simple, CheckLibraryVersion)
 
 
 #endif _LIFE_EXPORT_LIBRARY_SIMPLE_TESTS_H_
+

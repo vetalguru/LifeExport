@@ -5,14 +5,14 @@
 #include <string>
 
 
-inline const DWORD execCommand(const std::wstring &aCmd,  std::wstring *aResult, unsigned int aTimeSlice = 20 /* 20 ms */)
+inline const DWORD execCommand(const std::wstring &aCmd, std::wstring *aResult, unsigned int aTimeSlice = 20 /* 20 ms */)
 {
     if (aCmd.empty())
         return ERROR_BAD_COMMAND;
 
     if (aResult == NULL)
         return ERROR_INCORRECT_ADDRESS;
-    
+
     aResult->clear();
 
     DWORD error = 0;
@@ -87,3 +87,4 @@ inline const DWORD execCommand(const std::wstring &aCmd,  std::wstring *aResult,
 
 
 #endif _LIFE_EXPORT_COMMON_TESTS_H_
+
