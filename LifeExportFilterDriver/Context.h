@@ -6,30 +6,30 @@
 #include "Globals.h"
 
 
-#define AA_FILE_CONTEXT_TAG		'cfeL'
+#define AA_FILE_CONTEXT_TAG    'cfAA'
 
 
 typedef struct _AA_FILE_CONTEXT
 {
-	ULONGLONG FileSize;
+    ULONGLONG FileSize;
 
-	AA_FILE_ID_INFO		FileID;
+    AA_FILE_ID_INFO    FileID;
 
 } AA_FILE_CONTEXT, *PAA_FILE_CONTEXT;
 
-#define AA_FILE_CONTEXT_SIZE	sizeof(AA_FILE_CONTEXT)
+#define AA_FILE_CONTEXT_SIZE    sizeof(AA_FILE_CONTEXT)
 
 
 NTSTATUS
 AA_CreateFileContext(
-	_Outptr_ PAA_FILE_CONTEXT *aFileContext
+    _Outptr_ PAA_FILE_CONTEXT *aFileContext
 );
 
 
 VOID
 AA_FileContextCleanup(
-	_In_ PFLT_CONTEXT     aContext,
-	_In_ FLT_CONTEXT_TYPE aContextType
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
 );
 
 

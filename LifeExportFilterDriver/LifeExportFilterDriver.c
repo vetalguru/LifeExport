@@ -15,30 +15,30 @@
 //
 CONST FLT_OPERATION_REGISTRATION Callbacks[] =
 {
-	{
-		IRP_MJ_CREATE,
-		0,
-		AA_PreCreate,
-		AA_PostCreate
-	},
+    {
+        IRP_MJ_CREATE,
+        0,
+        AA_PreCreate,
+        AA_PostCreate
+    },
 
-	{
-		IRP_MJ_CLOSE,
-		0,
-		AA_PreClose,
-		NULL
-	},
+    {
+        IRP_MJ_CLOSE,
+        0,
+        AA_PreClose,
+        NULL
+    },
 
-	{
-		IRP_MJ_READ,
-		FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO /* | FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO */ ,
-		AA_PreRead,
-		NULL
-	},
+    {
+        IRP_MJ_READ,
+        FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO /* | FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO */,
+        AA_PreRead,
+        NULL
+    },
 
-	{
-		IRP_MJ_OPERATION_END
-	}
+    {
+        IRP_MJ_OPERATION_END
+    }
 
 };
 
@@ -46,41 +46,41 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] =
 // Context registration structure
 CONST FLT_CONTEXT_REGISTRATION ContextRegistration[] =
 {
-	{
-		FLT_FILE_CONTEXT,
-		0,
-		AA_FileContextCleanup,
-		sizeof(AA_FILE_CONTEXT),
-		AA_FILE_CONTEXT_TAG
-	},
+    {
+        FLT_FILE_CONTEXT,
+        0,
+        AA_FileContextCleanup,
+        sizeof(AA_FILE_CONTEXT),
+        AA_FILE_CONTEXT_TAG
+    },
 
-	{
-		FLT_CONTEXT_END
-	}
+    {
+        FLT_CONTEXT_END
+    }
 
 };
 
 
 //
-// This defines what we want to filter with FltMgr 
+// This defines what we want to filter with FltMgr
 //
 CONST FLT_REGISTRATION FilterRegistration = {
-	sizeof(FLT_REGISTRATION),    // Size
-	FLT_REGISTRATION_VERSION,    // Version
-	0,                           // Flags
+    sizeof(FLT_REGISTRATION),    // Size
+    FLT_REGISTRATION_VERSION,    // Version
+    0,                           // Flags
 
-	ContextRegistration,         // Context Registration
-	Callbacks,                   // Operation Registration
+    ContextRegistration,         // Context Registration
+    Callbacks,                   // Operation Registration
 
-	AA_Unload,                   // FilterUnload Callback
-	NULL,                        // InstanceSetup Callback
-	NULL,                        // InstanceQueryTeardown Callback
-	NULL,                        // InstanceTeardownStart Callback
-	NULL,                        // InstanceTeardownComplete Callback
+    AA_Unload,                   // FilterUnload Callback
+    NULL,                        // InstanceSetup Callback
+    NULL,                        // InstanceQueryTeardown Callback
+    NULL,                        // InstanceTeardownStart Callback
+    NULL,                        // InstanceTeardownComplete Callback
 
-	NULL,                        // GenerateFileName Callback
-	NULL,                        // GenerateDestinationFileName Callback 
-	NULL                         // NormalizeNameComponent Callback
+    NULL,                        // GenerateFileName Callback
+    NULL,                        // GenerateDestinationFileName Callback
+    NULL                         // NormalizeNameComponent Callback
 };
 
 
@@ -133,97 +133,97 @@ Return Value:
         return status;
     }
 
-	// Create default security descriptor for FltCreateCommunicationPort
-	PSECURITY_DESCRIPTOR sd = NULL;
-	status = FltBuildDefaultSecurityDescriptor(&sd, FLT_PORT_ALL_ACCESS);
-	if (!NT_SUCCESS(status))
-	{
-		return status;
-	}
+    // Create default security descriptor for FltCreateCommunicationPort
+    PSECURITY_DESCRIPTOR sd = NULL;
+    status = FltBuildDefaultSecurityDescriptor(&sd, FLT_PORT_ALL_ACCESS);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
 
     // TODO: Create communication port server for alert
 
     // Create comminication port server for CREATE messages
-	status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CREATE_CONNECTION_TYPE);
-	if (!NT_SUCCESS(status))
-	{
-		if (sd != NULL)
-		{
-			FltFreeSecurityDescriptor(sd);
-			sd = NULL;
-		}
+    status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+    if (!NT_SUCCESS(status))
+    {
+        if (sd != NULL)
+        {
+            FltFreeSecurityDescriptor(sd);
+            sd = NULL;
+        }
 
-		if (GlobalData.FilterHandle != NULL)
-		{
-			FltUnregisterFilter(GlobalData.FilterHandle);
-			GlobalData.FilterHandle = NULL;
-		}
+        if (GlobalData.FilterHandle != NULL)
+        {
+            FltUnregisterFilter(GlobalData.FilterHandle);
+            GlobalData.FilterHandle = NULL;
+        }
 
-		return status;
-	}
+        return status;
+    }
 
     // Create communication port server for READ messages
-	status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_READ_CONNECTION_TYPE);
-	if (!NT_SUCCESS(status))
-	{
-		if (GlobalData.ServerPortCreate != NULL)
-		{
-			AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
-		}
+    status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_READ_CONNECTION_TYPE);
+    if (!NT_SUCCESS(status))
+    {
+        if (GlobalData.ServerPortCreate != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+        }
 
-		if (sd != NULL)
-		{
-			FltFreeSecurityDescriptor(sd);
-			sd = NULL;
-		}
+        if (sd != NULL)
+        {
+            FltFreeSecurityDescriptor(sd);
+            sd = NULL;
+        }
 
-		if (GlobalData.FilterHandle != NULL)
-		{
-			FltUnregisterFilter(GlobalData.FilterHandle);
-			GlobalData.FilterHandle = NULL;
-		}
+        if (GlobalData.FilterHandle != NULL)
+        {
+            FltUnregisterFilter(GlobalData.FilterHandle);
+            GlobalData.FilterHandle = NULL;
+        }
 
-		return status;
-	}
-
-
-	// Start filtering
-	status = FltStartFiltering(GlobalData.FilterHandle);
-	if (!NT_SUCCESS(status))
-	{
-		if (GlobalData.ServerPortRead != NULL)
-		{
-			AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
-			GlobalData.ServerPortRead = NULL;
-		}
-
-		if (GlobalData.ServerPortCreate != NULL)
-		{
-			AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
-			GlobalData.ServerPortCreate = NULL;
-		}
-
-		if (sd != NULL)
-		{
-			FltFreeSecurityDescriptor(sd);
-			sd = NULL;
-		}
-
-		if (GlobalData.FilterHandle != NULL)
-		{
-			FltUnregisterFilter(GlobalData.FilterHandle);
-			GlobalData.FilterHandle = NULL;
-		}
-
-		return status;
-	}
+        return status;
+    }
 
 
-	if (sd != NULL)
-	{
-		FltFreeSecurityDescriptor(sd);
-		sd = NULL;
-	}
+    // Start filtering
+    status = FltStartFiltering(GlobalData.FilterHandle);
+    if (!NT_SUCCESS(status))
+    {
+        if (GlobalData.ServerPortRead != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
+            GlobalData.ServerPortRead = NULL;
+        }
+
+        if (GlobalData.ServerPortCreate != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+            GlobalData.ServerPortCreate = NULL;
+        }
+
+        if (sd != NULL)
+        {
+            FltFreeSecurityDescriptor(sd);
+            sd = NULL;
+        }
+
+        if (GlobalData.FilterHandle != NULL)
+        {
+            FltUnregisterFilter(GlobalData.FilterHandle);
+            GlobalData.FilterHandle = NULL;
+        }
+
+        return status;
+    }
+
+
+    if (sd != NULL)
+    {
+        FltFreeSecurityDescriptor(sd);
+        sd = NULL;
+    }
 
     return status;
 }
@@ -256,12 +256,12 @@ Return Value:
     UNREFERENCED_PARAMETER(aFlags);
 
     // Close comminication port server for READ message
-	AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
-	GlobalData.ServerPortRead = NULL;
+    AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
+    GlobalData.ServerPortRead = NULL;
 
     // Close communication port server for CREATE messages
-	AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
-	GlobalData.ServerPortCreate = NULL;
+    AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+    GlobalData.ServerPortCreate = NULL;
 
     // TODO: Close communication port server for alert messages
 
@@ -273,3 +273,4 @@ Return Value:
 
     return STATUS_SUCCESS;
 }
+
