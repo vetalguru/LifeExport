@@ -8,45 +8,45 @@
 namespace LifeExportManagement
 {
 
-	class LifeExportManager
-	{
-		struct LIFE_EXPORT_MANAGER_CONTEXT
-		{
-			std::atomic<bool> NeedFinalize;
+    class LifeExportManager
+    {
+        struct LIFE_EXPORT_MANAGER_CONTEXT
+        {
+            std::atomic<bool> NeedFinalize;
 
-			HANDLE CreateThreadHandle;
+            HANDLE CreateThreadHandle;
 
-			HANDLE ReadThreadHandle;
-		};
+            HANDLE ReadThreadHandle;
+        };
 
-		public:
-			LifeExportManager();
-			~LifeExportManager();
+    public:
+        LifeExportManager();
+        ~LifeExportManager();
 
-			HRESULT exec();
-			HRESULT stop();
+        HRESULT exec();
+        HRESULT stop();
 
-		private:
-			HRESULT initLifeExportManager();
-			HRESULT startLifeExportManager();
-			HRESULT stopLifeExportManager();
-			HRESULT finalizeLifeExportManager();
+    private:
+        HRESULT initLifeExportManager();
+        HRESULT startLifeExportManager();
+        HRESULT stopLifeExportManager();
+        HRESULT finalizeLifeExportManager();
 
-		private:
-			static HRESULT createMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
-			static HRESULT readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
+    private:
+        static HRESULT createMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
+        static HRESULT readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
 
-		private:
-			// Noncopyable class
-			LifeExportManager(const LifeExportManager&) = delete;
-			LifeExportManager& operator = (const LifeExportManager&) = delete;
+    private:
+        // Noncopyable class
+        LifeExportManager(const LifeExportManager&) = delete;
+        LifeExportManager& operator = (const LifeExportManager&) = delete;
 
-		private:
-			LIFE_EXPORT_MANAGER_CONTEXT m_context;
+    private:
+        LIFE_EXPORT_MANAGER_CONTEXT m_context;
 
-            bool m_loadedInStart;
+        bool m_loadedInStart;
 
-	};
+    };
 
 } // namespace LifeExportManagement
 

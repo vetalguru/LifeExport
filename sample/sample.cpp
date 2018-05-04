@@ -17,22 +17,22 @@ int wmain(int argc, wchar_t* argv[])
         std::cerr << "Unable to load library" << std::endl;
         return -1;
     }
- 
+
 #ifndef NDEBUGz
     std::wcout << "Library was loaded" << std::endl;
 #endif // !NDEBUG
 
-	LifeExportManager exportManager;
-	exportManager.exec();
+    LifeExportManager exportManager;
+    exportManager.exec();
 
-	while (true)
-	{
-		unsigned char ch = (unsigned char) getchar();
-		if (ch == 'q')
-		{
-			break;
-		}
-	}
+    while (true)
+    {
+        unsigned char ch = (unsigned char)getchar();
+        if (ch == 'q')
+        {
+            break;
+        }
+    }
 
     // Unload library
     ::FreeLibrary(dllInstance);
@@ -40,3 +40,4 @@ int wmain(int argc, wchar_t* argv[])
 
     return 0;
 }
+
