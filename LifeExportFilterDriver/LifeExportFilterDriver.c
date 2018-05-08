@@ -84,10 +84,20 @@ CONST FLT_REGISTRATION FilterRegistration = {
 };
 
 
+//
+// Local function declaration
+//
+NTSTATUS
+AA_SendUnloadingMessageToUserMode(
+    VOID
+);
+
 
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT,  DriverEntry)
     #pragma alloc_text(PAGED, AA_Unload)
+    // Local function
+    #pragma alloc_text(PAGED, AA_SendUnloadingMessageToUserMode)
 #endif
 
 
@@ -138,21 +148,56 @@ Return Value:
     status = FltBuildDefaultSecurityDescriptor(&sd, FLT_PORT_ALL_ACCESS);
     if (!NT_SUCCESS(status))
     {
+        // Close filter handle
+        if (GlobalData.FilterHandle != NULL)
+        {
+            FltUnregisterFilter(GlobalData.FilterHandle);
+            GlobalData.FilterHandle = NULL;
+        }
+
         return status;
     }
 
-    // TODO: Create communication port server for alert
-
-    // Create comminication port server for CREATE messages
-    status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+    // Create communication port server for CONTROL message
+    status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CONTROL_CONNECTION_TYPE);
     if (!NT_SUCCESS(status))
     {
+        // Close security descriptor
         if (sd != NULL)
         {
             FltFreeSecurityDescriptor(sd);
             sd = NULL;
         }
 
+        // Close filter handle
+        if (GlobalData.FilterHandle != NULL)
+        {
+            FltUnregisterFilter(GlobalData.FilterHandle);
+            GlobalData.FilterHandle = NULL;
+        }
+
+        return status;
+    }
+
+    // Create comminication port server for CREATE messages
+    status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+    if (!NT_SUCCESS(status))
+    {
+        // Close CONTROL server port
+        if (GlobalData.ServerPortControl != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_CONTROL_CONNECTION_TYPE);
+            GlobalData.ServerPortControl = NULL;
+        }
+
+        // Close security descriptor
+        if (sd != NULL)
+        {
+            FltFreeSecurityDescriptor(sd);
+            sd = NULL;
+        }
+
+        // Close filter handle
         if (GlobalData.FilterHandle != NULL)
         {
             FltUnregisterFilter(GlobalData.FilterHandle);
@@ -166,17 +211,28 @@ Return Value:
     status = AA_CreateCommunicationPort(sd, LIFE_EXPORT_READ_CONNECTION_TYPE);
     if (!NT_SUCCESS(status))
     {
+        // Close CREATE server port
         if (GlobalData.ServerPortCreate != NULL)
         {
             AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
+            GlobalData.ServerPortCreate = NULL;
         }
 
+        // Close CONTROL server port
+        if (GlobalData.ServerPortControl != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_CONTROL_CONNECTION_TYPE);
+            GlobalData.ServerPortControl = NULL;
+        }
+
+        // Close security descriptor
         if (sd != NULL)
         {
             FltFreeSecurityDescriptor(sd);
             sd = NULL;
         }
 
+        // Close filter handle
         if (GlobalData.FilterHandle != NULL)
         {
             FltUnregisterFilter(GlobalData.FilterHandle);
@@ -191,24 +247,35 @@ Return Value:
     status = FltStartFiltering(GlobalData.FilterHandle);
     if (!NT_SUCCESS(status))
     {
+        // Close READ server port 
         if (GlobalData.ServerPortRead != NULL)
         {
             AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
             GlobalData.ServerPortRead = NULL;
         }
 
+        // Close CREATE server port 
         if (GlobalData.ServerPortCreate != NULL)
         {
             AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
             GlobalData.ServerPortCreate = NULL;
         }
 
+        // Close CONTROL server port
+        if (GlobalData.ServerPortControl != NULL)
+        {
+            AA_CloseCommunicationPort(LIFE_EXPORT_CONTROL_CONNECTION_TYPE);
+            GlobalData.ServerPortControl = NULL;
+        }
+
+        // Close security descriptor
         if (sd != NULL)
         {
             FltFreeSecurityDescriptor(sd);
             sd = NULL;
         }
 
+        // Close filter handle
         if (GlobalData.FilterHandle != NULL)
         {
             FltUnregisterFilter(GlobalData.FilterHandle);
@@ -255,6 +322,9 @@ Return Value:
     PAGED_CODE();
     UNREFERENCED_PARAMETER(aFlags);
 
+    // Need send UNLOAD message to user-mode
+    AA_SendUnloadingMessageToUserMode();
+
     // Close comminication port server for READ message
     AA_CloseCommunicationPort(LIFE_EXPORT_READ_CONNECTION_TYPE);
     GlobalData.ServerPortRead = NULL;
@@ -263,7 +333,9 @@ Return Value:
     AA_CloseCommunicationPort(LIFE_EXPORT_CREATE_CONNECTION_TYPE);
     GlobalData.ServerPortCreate = NULL;
 
-    // TODO: Close communication port server for alert messages
+    // Close communication port server for alert messages
+    AA_CloseCommunicationPort(LIFE_EXPORT_CONTROL_CONNECTION_TYPE);
+    GlobalData.ServerPortControl = NULL;
 
     // Unregister filter
     FltUnregisterFilter(GlobalData.FilterHandle);
@@ -273,4 +345,62 @@ Return Value:
 
     return STATUS_SUCCESS;
 }
+
+
+//
+// Local function definition
+//
+
+NTSTATUS
+AA_SendUnloadingMessageToUserMode (
+    VOID
+)
+/*++
+
+Routine Description:
+
+    This routine sends unloading message to the user program.
+
+Arguments:
+
+    None.
+
+Return Value:
+
+    The return value is the status of the operation.
+
+--*/
+{
+    PAGED_CODE();
+
+    if (GlobalData.ClientPortControl == NULL)
+    {
+        return STATUS_HANDLES_CLOSED;
+    }
+
+    LIFE_EXPORT_CONTROL_NOTIFICATION_REQUEST request = { 0 };
+    request.Message = CONTROL_RESULT_UNLOADING;
+
+    LIFE_EXPORT_CONTROL_NOTIFICATION_RESPONSE response = { 0 };
+    ULONG replyLength = sizeof(response);
+    NTSTATUS status = FltSendMessage(GlobalData.FilterHandle,
+        &GlobalData.ClientPortControl,
+        &request,
+        sizeof(request),
+        &response,
+        &replyLength,
+        NULL);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    if (response.ConnectionResult != CONTROL_RESULT_UNLOAD)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return status;
+}
+
 

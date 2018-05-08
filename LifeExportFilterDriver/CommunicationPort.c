@@ -69,6 +69,12 @@ AA_CreateCommunicationPort(
             serverPort = &GlobalData.ServerPortRead;
             break;
         }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            portName = AA_CONTROL_PORT_NAME;
+            serverPort = &GlobalData.ServerPortControl;
+            break;
+        }
         default:
         {
             FLT_ASSERTMSG("No such connection type\n", FALSE);
@@ -116,6 +122,11 @@ AA_CloseCommunicationPort(
         case LIFE_EXPORT_READ_CONNECTION_TYPE:
         {
             serverPort = &GlobalData.ServerPortRead;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            serverPort = &GlobalData.ServerPortControl;
             break;
         }
         default:
@@ -188,6 +199,13 @@ AA_ConnectNotifyCallback(
             *aConnectionCookie = connectionCookie;
             break;
         }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            GlobalData.ClientPortControl = aClientPort;
+            *aConnectionCookie = connectionCookie;
+            break;
+        }
+
         default:
         {
             ExFreePoolWithTag(connectionCookie, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
@@ -201,7 +219,7 @@ AA_ConnectNotifyCallback(
 
 
 NTSTATUS
-AA_MessageNotifyCallback(
+AA_MessageNotifyCallback (
     _In_                                                                     PVOID  aConnectionCoockie,
     _In_reads_bytes_opt_(aInputBufferSize)                                   PVOID  aInputBuffer,
     _In_                                                                     ULONG  aInputBufferSize,
@@ -229,7 +247,7 @@ AA_MessageNotifyCallback(
 
 
 VOID
-AA_DisconnectNotifyCallback(
+AA_DisconnectNotifyCallback (
     _In_opt_ PVOID aConnectionCookie
 )
 {
@@ -253,6 +271,12 @@ AA_DisconnectNotifyCallback(
         {
             FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
             GlobalData.ClientPortRead = NULL;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortControl);
+            GlobalData.ClientPortControl = NULL;
             break;
         }
         default:

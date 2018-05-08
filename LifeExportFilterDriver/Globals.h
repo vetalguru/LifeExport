@@ -33,15 +33,17 @@ typedef struct _GLOBAL_FILTER_DATA
     //
     // The server ports.
     //
-    PFLT_PORT   ServerPortCreate; // communication port handle for "CREATE" messages
-    PFLT_PORT   ServerPortRead;   // communication port handle for "READ" messages
+    PFLT_PORT   ServerPortCreate;  // communication port handle for "CREATE" messages
+    PFLT_PORT   ServerPortRead;    // communication port handle for "READ" messages
+    PFLT_PORT   ServerPortControl; // communication port handle for "CONTROL" messages 
 
     //
     //  The client ports.
     //  These ports are assigned at ConnectNotifyCallback and cleaned at DisconnectNotifyCallback
     //
-    PFLT_PORT   ClientPortCreate; // connection port regarding the "CREATE" message
-    PFLT_PORT   ClientPortRead;   // connection port regarding the "READ" message
+    PFLT_PORT   ClientPortCreate;  // connection port regarding the "CREATE" message
+    PFLT_PORT   ClientPortRead;    // connection port regarding the "READ" message
+    PFLT_PORT   ClientPortControl; // coneection port regarding the "CONTROL" message
 
 } GLOBAL_FILTER_DATA, *PGLOBAL_FILTER_DATA;
 
