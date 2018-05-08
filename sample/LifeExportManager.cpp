@@ -14,13 +14,21 @@ namespace LifeExportManagement
         : m_loadedInStart(true)
     {
         ZeroMemory(&m_context, sizeof(m_context));
+        m_context.CurrentManager = this;
 
         HRESULT res = ::FilterLoad(FILTER_DRIVER_NAME);
-        if ((res == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) ||
+        if ((res == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS))          ||
             (res == HRESULT_FROM_WIN32(ERROR_SERVICE_ALREADY_RUNNING)) ||
             (res == HRESULT_FROM_WIN32(ERROR_PRIVILEGE_NOT_HELD)))
         {
             m_loadedInStart = false;
+        }
+
+        // start CONTROL thread
+        HRESULT result = initLifeExportControlThread();
+        if (SUCCEEDED(result))
+        {
+            startLifeExportControlThread();
         }
     }
 
@@ -28,6 +36,10 @@ namespace LifeExportManagement
     LifeExportManager::~LifeExportManager()
     {
         stop();
+
+        // stop CONTROL thread
+        stopLifeExportControlThread();
+        freeLifeExportControlThread();
 
         if (m_loadedInStart)
         {
@@ -47,7 +59,7 @@ namespace LifeExportManagement
         res = startLifeExportManager();
         if (FAILED(res))
         {
-            res = finalizeLifeExportManager();
+            res = freeLifeExportManager();
         }
 
         return res;
@@ -62,7 +74,7 @@ namespace LifeExportManagement
             return res;
         }
 
-        return finalizeLifeExportManager();
+        return freeLifeExportManager();
     }
 
 
@@ -71,7 +83,7 @@ namespace LifeExportManagement
         m_context.NeedFinalize = false;
 
         HRESULT result = S_OK;
-        m_context.CreateThreadHandle = ::CreateThread(NULL,
+        m_context.CreateThreadHandle = ::CreateThread( NULL,
             0,
             (LPTHREAD_START_ROUTINE)LifeExportManager::createMsgHandlerFunc,
             &m_context,
@@ -80,11 +92,10 @@ namespace LifeExportManagement
         if (m_context.CreateThreadHandle == NULL)
         {
             result = HRESULT_FROM_WIN32(::GetLastError());
-
             return result;
         }
 
-        m_context.ReadThreadHandle = ::CreateThread(NULL,
+        m_context.ReadThreadHandle = ::CreateThread( NULL,
             0,
             (LPTHREAD_START_ROUTINE)&LifeExportManager::readMsgHandlerFunc,
             &m_context,
@@ -111,13 +122,11 @@ namespace LifeExportManagement
         if (::ResumeThread(m_context.CreateThreadHandle) == -1)
         {
             result = HRESULT_FROM_WIN32(::GetLastError());
-            return result;
         }
 
         if (::ResumeThread(m_context.ReadThreadHandle) == -1)
         {
             result = HRESULT_FROM_WIN32(::GetLastError());
-            return result;
         }
 
         return result;
@@ -162,7 +171,7 @@ namespace LifeExportManagement
     }
 
 
-    HRESULT LifeExportManager::finalizeLifeExportManager()
+    HRESULT LifeExportManager::freeLifeExportManager()
     {
         HRESULT result = S_OK;
 
@@ -188,6 +197,72 @@ namespace LifeExportManagement
 
         return result;
     }
+
+
+    HRESULT LifeExportManager::initLifeExportControlThread()
+    {
+        HRESULT result = S_OK;
+        m_context.ControlThreadHandle = ::CreateThread(NULL,
+            0,
+            (LPTHREAD_START_ROUTINE)&LifeExportManager::controlMsgHandleFunc,
+            &m_context,
+            CREATE_SUSPENDED,
+            NULL);
+        if (m_context.ControlThreadHandle == NULL)
+        {
+            result = ::GetLastError();
+        }
+
+        return result;
+    }
+
+
+    HRESULT LifeExportManager::startLifeExportControlThread()
+    {
+        HRESULT result = S_OK;
+        if (::ResumeThread(m_context.ControlThreadHandle) == -1)
+        {
+            result = HRESULT_FROM_WIN32(::GetLastError());
+        }
+
+        return result;
+    }
+
+    HRESULT LifeExportManager::stopLifeExportControlThread()
+    {
+        if (m_context.ControlThreadHandle == NULL)
+        {
+            return E_INVALIDARG;
+        }
+
+        HRESULT result = S_OK;
+        // wait thread
+        if (!::WaitForSingleObject(m_context.ControlThreadHandle, 500))
+        {
+            result = HRESULT_FROM_WIN32(::GetLastError());
+        }
+
+        return result;
+    }
+
+
+    HRESULT LifeExportManager::freeLifeExportControlThread()
+    {
+        HRESULT result = S_OK;
+        if (m_context.ControlThreadHandle != NULL)
+        {
+            if (::CloseHandle(m_context.ControlThreadHandle))
+            {
+                result = HRESULT_FROM_WIN32(::GetLastError());
+            }
+
+            m_context.ControlThreadHandle = NULL;
+        }
+
+        return result;
+    }
+
+
 
 
     ///////////////////////////////////////////////////////////////////
@@ -359,7 +434,7 @@ namespace LifeExportManagement
 
             USER_LIFE_EXPORT_REPLY_READ_NOTIFICATION replyMessage{ 0 };
             replyMessage.ReplyHeader.MessageId = requestMessage.Header.MessageId;
-            replyMessage.ReplyHeader.Status = 0x0; //STATUS_SUCCESS;
+            replyMessage.ReplyHeader.Status = 0x0; // STATUS_SUCCESS;
             CopyMemory(&replyMessage.ResponseData.FileId, &requestMessage.Notification.FileId, sizeof(replyMessage.ResponseData.FileId));
 
 #ifndef NDEBUG
@@ -385,6 +460,101 @@ namespace LifeExportManagement
 
         return res;
     }
+
+
+    HRESULT LifeExportManager::controlMsgHandleFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext)
+    {
+#ifndef NDEBUG
+        std::wcout << L"Start CONTROL Thread" << std::endl;
+#endif //!NDEBUG
+
+        if (aContext == NULL)
+        {
+            // Connect error
+            return E_INVALIDARG;
+        }
+
+        if (aContext->CurrentManager == NULL)
+        {
+            // Invalid manager pointer
+            return E_INVALIDARG;
+        }
+
+        FilterCommunicationPort portControl;
+        LIFE_EXPORT_CONNECTION_CONTEXT context;
+        context.Type = LIFE_EXPORT_CONTROL_CONNECTION_TYPE;
+        HRESULT res = portControl.connect(std::wstring(AA_CONTROL_PORT_NAME), 0, &context, sizeof(context));
+        if (FAILED(res))
+        {
+            return res;
+        }
+
+        if (!portControl.isConnected())
+        {
+            return E_FAIL;
+        }
+
+        typedef struct _USER_LIFE_EXPORT_GET_CONTROL_NOTIFICATION
+        {
+            FILTER_MESSAGE_HEADER                    Header;
+            LIFE_EXPORT_CONTROL_NOTIFICATION_REQUEST Notification;
+        } USER_LIFE_EXPORT_GET_CONTROL_NOTIFICATION, *PUSER_LIFE_EXPORT_GET_CONTROL_NOTIFICATION;
+
+        typedef struct _USER_LIFE_EXPORT_REPLY_CONTROL_NOTIFICATION
+        {
+            FILTER_REPLY_HEADER                       ReplyHeader;
+            LIFE_EXPORT_CONTROL_NOTIFICATION_RESPONSE ResponseData;
+        } USER_LIFE_EXPORT_REPLY_CONTROL_NOTIFICATION, *PUSER_LIFE_EXPORT_REPLY_CONTROL_NOTIFICATION;
+
+        while (true)
+        {
+            USER_LIFE_EXPORT_GET_CONTROL_NOTIFICATION requestMessage{ 0 };
+            res = portControl.getMessage(&requestMessage.Header, sizeof(requestMessage), NULL);
+            if (res == HRESULT_FROM_WIN32(ERROR_OPERATION_ABORTED))
+            {
+                break;
+            }
+            else if (FAILED(res))
+            {
+                break;
+            }
+
+            HRESULT unloadResult = S_OK;
+            switch (requestMessage.Notification.Message)
+            {
+                case  CONTROL_RESULT_UNLOADING:
+                {
+                    // Stop all working threads
+                    unloadResult = aContext->CurrentManager->stop();
+                    break;
+                }
+                default:
+                {
+                    /* UNKNOWN MESSAGE */
+                    break;
+                }
+            }
+
+            USER_LIFE_EXPORT_REPLY_CONTROL_NOTIFICATION replyMessage{ 0 };
+            replyMessage.ReplyHeader.MessageId = requestMessage.Header.MessageId;
+            replyMessage.ReplyHeader.Status = unloadResult;
+            replyMessage.ResponseData.ConnectionResult = CONTROL_RESULT_UNLOAD;
+            res = portControl.replyMessage(&replyMessage.ReplyHeader, sizeof(replyMessage));
+            if (FAILED(res))
+            {
+                break;
+            }
+        }
+
+        portControl.disconnect();
+
+#ifndef NDEBUG
+        std::wcout << L"Finish CONTROL Thread" << std::endl;
+#endif //!NDEBUG
+
+        return res;
+    }
+
 
 } // namespace LifeExportManagement
 

@@ -12,11 +12,12 @@ namespace LifeExportManagement
     {
         struct LIFE_EXPORT_MANAGER_CONTEXT
         {
-            std::atomic<bool> NeedFinalize;
+            std::atomic<bool> NeedFinalize; // Finalize of all CREATE and READ threads
+            HANDLE CreateThreadHandle;      // CREATE thread handle (process CREATE messages from driver filter)
+            HANDLE ReadThreadHandle;        // READ thread handle (process READ messages from driver filter)
+            HANDLE ControlThreadHandle;     // thread to process contol messages
 
-            HANDLE CreateThreadHandle;
-
-            HANDLE ReadThreadHandle;
+            LifeExportManager* CurrentManager;
         };
 
     public:
@@ -27,14 +28,24 @@ namespace LifeExportManagement
         HRESULT stop();
 
     private:
+        // Manage CREATE and READ threads
         HRESULT initLifeExportManager();
         HRESULT startLifeExportManager();
         HRESULT stopLifeExportManager();
-        HRESULT finalizeLifeExportManager();
+        HRESULT freeLifeExportManager();
+
+    private:
+        // Manage CONTROL communication port
+        HRESULT initLifeExportControlThread();
+        HRESULT startLifeExportControlThread();
+        HRESULT stopLifeExportControlThread();
+        HRESULT freeLifeExportControlThread();
+      
 
     private:
         static HRESULT createMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
         static HRESULT readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
+        static HRESULT controlMsgHandleFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
 
     private:
         // Noncopyable class
