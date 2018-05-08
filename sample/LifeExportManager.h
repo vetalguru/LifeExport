@@ -1,65 +1,43 @@
 #ifndef _LIFE_EXPORT_MANAGER_H_
 #define _LIFE_EXPORT_MANAGER_H_
 
-#include <Windows.h>
-#include <atomic>
-#include <thread>
+
+#include "IDriverHandler.h"
+#include "LifeExportDriverManager.h"
+
+
 
 namespace LifeExportManagement
 {
-
-    class LifeExportManager
+    class LifeExportManager : protected LifeExportDriverManagement::IDriverHandler
     {
-        struct LIFE_EXPORT_MANAGER_CONTEXT
-        {
-            std::atomic<bool> NeedFinalize; // Finalize of all CREATE and READ threads
-            HANDLE CreateThreadHandle;      // CREATE thread handle (process CREATE messages from driver filter)
-            HANDLE ReadThreadHandle;        // READ thread handle (process READ messages from driver filter)
-            HANDLE ControlThreadHandle;     // thread to process contol messages
+        public:
+            LifeExportManager();
+            ~LifeExportManager();
 
-            LifeExportManager* CurrentManager;
-        };
+            const HRESULT exec();
+            const HRESULT stop() const;
 
-    public:
-        LifeExportManager();
-        ~LifeExportManager();
+        private:
+            // Noncopyable class
+            LifeExportManager(const LifeExportManager&) = delete;
+            LifeExportManager& operator = (const LifeExportManager&) = delete;
 
-        HRESULT exec();
-        HRESULT stop();
+        private:
+            // Driver manager callbacks
+            virtual HRESULT CreatingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+                LIFE_EXPORT_CONNECTION_RESULT& aResult);
+            virtual HRESULT ReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+                const PULONGLONG aBlockFileOffset,
+                const PULONGLONG aBlockLength);
+            virtual void DriverUnloadingCallback();
 
-    private:
-        // Manage CREATE and READ threads
-        HRESULT initLifeExportManager();
-        HRESULT startLifeExportManager();
-        HRESULT stopLifeExportManager();
-        HRESULT freeLifeExportManager();
-
-    private:
-        // Manage CONTROL communication port
-        HRESULT initLifeExportControlThread();
-        HRESULT startLifeExportControlThread();
-        HRESULT stopLifeExportControlThread();
-        HRESULT freeLifeExportControlThread();
-      
-
-    private:
-        static HRESULT createMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
-        static HRESULT readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
-        static HRESULT controlMsgHandleFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext);
-
-    private:
-        // Noncopyable class
-        LifeExportManager(const LifeExportManager&) = delete;
-        LifeExportManager& operator = (const LifeExportManager&) = delete;
-
-    private:
-        LIFE_EXPORT_MANAGER_CONTEXT m_context;
-
-        bool m_loadedInStart;
-
+        private:
+            LifeExportDriverManagement::LifeExportDriverManager* m_driverManager;
     };
 
-} // namespace LifeExportManagement
+}; // namespace LifeExportManagement
+
 
 #endif // _LIFE_EXPORT_MANAGER_H_
 

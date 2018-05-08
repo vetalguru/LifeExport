@@ -132,8 +132,9 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="LifeExportManager.cpp" />
+    <ClCompile Include="LifeExportDriverManager.cpp" />
     <ClCompile Include="FilterCommunicationPort.cpp" />
+    <ClCompile Include="LifeExportManager.cpp" />
     <ClCompile Include="sample.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -142,8 +143,10 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="LifeExportManager.h" />
+    <ClInclude Include="IDriverHandler.h" />
+    <ClInclude Include="LifeExportDriverManager.h" />
     <ClInclude Include="FilterCommunicationPort.h" />
+    <ClInclude Include="LifeExportManager.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fltUser.h>
 
+
 #include "LifeExportManager.h"
 
 #define LIFE_EXPORT_LIBRARY_NAME "LifeExportLibrary.dll"
@@ -18,12 +19,21 @@ int wmain(int argc, wchar_t* argv[])
         return -1;
     }
 
-#ifndef NDEBUGz
+#ifndef NDEBUG
     std::wcout << "Library was loaded" << std::endl;
 #endif // !NDEBUG
 
     LifeExportManager exportManager;
-    exportManager.exec();
+    HRESULT err = exportManager.exec();
+    if (FAILED(err))
+    {
+        // Unload library
+        ::FreeLibrary(dllInstance);
+        dllInstance = NULL;
+
+        return -1;
+    }
+
 
     while (true)
     {
