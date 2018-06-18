@@ -73,7 +73,7 @@ CONST FLT_REGISTRATION FilterRegistration = {
     Callbacks,                   // Operation Registration
 
     AA_Unload,                   // FilterUnload Callback
-    NULL,                        // InstanceSetup Callback
+    AA_InstanceSetup,            // InstanceSetup Callback
     NULL,                        // InstanceQueryTeardown Callback
     NULL,                        // InstanceTeardownStart Callback
     NULL,                        // InstanceTeardownComplete Callback
@@ -94,7 +94,8 @@ AA_SendUnloadingMessageToUserMode(
 
 
 #ifdef ALLOC_PRAGMA
-    #pragma alloc_text(INIT,  DriverEntry)
+    #pragma alloc_text(INIT, DriverEntry)
+    #pragma alloc_text(PAGE, AA_InstanceSetup)
     #pragma alloc_text(PAGE, AA_Unload)
     #pragma alloc_text(PAGE, AA_PreCreate)
     #pragma alloc_text(PAGE, AA_PostCreate)
@@ -295,6 +296,24 @@ Return Value:
         sd = NULL;
     }
 
+    return status;
+}
+
+
+NTSTATUS
+AA_InstanceSetup(
+    _In_ PCFLT_RELATED_OBJECTS    aFltObjects,
+    _In_ FLT_INSTANCE_SETUP_FLAGS aFlags,
+    _In_ DEVICE_TYPE              aVolumeDeviceType,
+    _In_ FLT_FILESYSTEM_TYPE      aVolumeFilesystemType
+)
+{
+    UNREFERENCED_PARAMETER(aFltObjects);
+    UNREFERENCED_PARAMETER(aFlags);
+    UNREFERENCED_PARAMETER(aVolumeDeviceType);
+    UNREFERENCED_PARAMETER(aVolumeFilesystemType);
+
+    NTSTATUS status = STATUS_SUCCESS;
     return status;
 }
 

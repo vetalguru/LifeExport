@@ -19,6 +19,15 @@ DriverEntry(
 
 
 NTSTATUS
+AA_InstanceSetup(
+    _In_ PCFLT_RELATED_OBJECTS    aFltObjects,
+    _In_ FLT_INSTANCE_SETUP_FLAGS aFlags,
+    _In_ DEVICE_TYPE              aVolumeDeviceType,
+    _In_ FLT_FILESYSTEM_TYPE      aVolumeFilesystemType
+);
+
+
+NTSTATUS
 AA_Unload(
     _Unreferenced_parameter_ FLT_FILTER_UNLOAD_FLAGS aFlags
 );
