@@ -161,13 +161,11 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Callbacks.c" />
     <ClCompile Include="CommunicationPort.c" />
     <ClCompile Include="Context.c" />
     <ClCompile Include="LifeExportFilterDriver.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Callbacks.h" />
     <ClInclude Include="Communication.h" />
     <ClInclude Include="Context.h" />
     <ClInclude Include="Utility.h" />

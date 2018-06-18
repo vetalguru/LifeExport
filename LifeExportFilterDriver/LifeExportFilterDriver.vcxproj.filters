@@ -27,9 +27,6 @@
     <ClCompile Include="LifeExportFilterDriver.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Callbacks.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="CommunicationPort.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -39,9 +36,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Globals.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Callbacks.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CommunicationPort.h">
