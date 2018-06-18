@@ -33,7 +33,7 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] =
         IRP_MJ_READ,
         FLTFL_OPERATION_REGISTRATION_SKIP_PAGING_IO /* | FLTFL_OPERATION_REGISTRATION_SKIP_CACHED_IO */,
         AA_PreRead,
-        NULL
+        AA_PostRead
     },
 
     {
@@ -100,6 +100,8 @@ AA_SendUnloadingMessageToUserMode(
     #pragma alloc_text(PAGE, AA_PreCreate)
     #pragma alloc_text(PAGE, AA_PostCreate)
     #pragma alloc_text(PAGE, AA_PreClose)
+    #pragma alloc_text(PAGE, AA_PreRead)
+    #pragma alloc_text(PAGE, AA_PostRead)
     // Local function
     #pragma alloc_text(PAGE, AA_SendUnloadingMessageToUserMode)
 #endif
@@ -835,4 +837,43 @@ Return Value:
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
 }
 
+
+FLT_POSTOP_CALLBACK_STATUS
+AA_PostRead(
+    _Inout_     PFLT_CALLBACK_DATA       aData,
+    _In_        PCFLT_RELATED_OBJECTS    aFltObjects,
+    _In_opt_    PVOID                    aCompletionContext,
+    _In_        FLT_POST_OPERATION_FLAGS aFlags
+)
+/*++
+ 
+Routine Description:
+ 
+    Handle post-read.
+    
+Arguments:
+    
+    aData - Pointer to the filter callbackData that is passed to us.
+    
+    aFltObjects - Pointer to the FLT_RELATED_OBJECTS data structure containing
+    opaque handles to this filter, instance, its associated volume and
+    file object.
+    
+    aCompletionContext - The completion context set in the pre-create routine.
+    
+    aFlags - Denotes whether the completion is successful or is being drained.
+    
+Return Value:
+    
+    The return value is the status of the operation.
+    
+--*/
+{
+    UNREFERENCED_PARAMETER(aData);
+    UNREFERENCED_PARAMETER(aFltObjects);
+    UNREFERENCED_PARAMETER(aCompletionContext);
+    UNREFERENCED_PARAMETER(aFlags);
+
+    return FLT_POSTOP_FINISHED_PROCESSING;
+}
 
