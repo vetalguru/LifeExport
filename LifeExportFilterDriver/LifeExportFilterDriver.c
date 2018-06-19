@@ -55,6 +55,14 @@ CONST FLT_CONTEXT_REGISTRATION ContextRegistration[] =
     },
 
     {
+        FLT_VOLUME_CONTEXT,
+        0,
+        AA_VolumeContextCleanup,
+        sizeof(AA_VOLUME_CONTEXT),
+        AA_VOLUME_CONTEXT_TAG
+    },
+
+    {
         FLT_CONTEXT_END
     }
 
@@ -316,6 +324,172 @@ AA_InstanceSetup(
     UNREFERENCED_PARAMETER(aVolumeFilesystemType);
 
     NTSTATUS status = STATUS_SUCCESS;
+    PAA_VOLUME_CONTEXT volumeContext = NULL;
+    UCHAR volPropBuffer[sizeof(FLT_VOLUME_PROPERTIES) + 512];
+    PFLT_VOLUME_PROPERTIES volProp = (PFLT_VOLUME_PROPERTIES)volPropBuffer;
+    PDEVICE_OBJECT deviceObject = NULL;
+
+    try
+    {
+        //
+        // Allocate a volume context structure
+        //
+        status = FltAllocateContext(aFltObjects->Filter,
+            FLT_VOLUME_CONTEXT,
+            sizeof(AA_VOLUME_CONTEXT),
+            NonPagedPool,
+            &volumeContext);
+        if (!NT_SUCCESS(status))
+        {
+            //
+            //  We could not allocate a context, quit now
+            //
+            leave;
+        }
+
+        //
+        //  Always get the volume properties, so I can get a sector size
+        //
+        ULONG resultLen = 0LU;
+        status = FltGetVolumeProperties(aFltObjects->Volume,
+            volProp,
+            sizeof(volPropBuffer),
+            &resultLen);
+        if (!NT_SUCCESS(status))
+        {
+            leave;
+        }
+
+        //
+        //  Save the sector size in the context for later use.  Note that
+        //  we will pick a minimum sector size if a sector size is not
+        //  specified.
+        //
+
+        FLT_ASSERT((volProp->SectorSize == 0) || (volProp->SectorSize >= AA_MIN_SECTOR_SIZE));
+
+        volumeContext->SectorSize = max(volProp->SectorSize, AA_MIN_SECTOR_SIZE);
+
+        //
+        //  Init the buffer field (which may be allocated later).
+        //
+        volumeContext->Name.Buffer = NULL;
+
+        //
+        //  Get the storage device object we want a name for.
+        //
+        status = FltGetDiskDeviceObject(aFltObjects->Volume,
+            &deviceObject);
+        if (NT_SUCCESS(status))
+        {
+            //
+            //  Try and get the DOS name.  If it succeeds we will have
+            //  an allocated name buffer.  If not, it will be NULL
+            //
+            status = IoVolumeDeviceToDosName(deviceObject, &volumeContext->Name);
+        }
+        else
+        {
+            //
+            //  If we could not get a DOS name, get the NT name.
+            //
+
+            FLT_ASSERT(volumeContext->Name.Buffer == NULL);
+
+            //
+            //  Figure out which name to use from the properties
+            //
+            PUNICODE_STRING workingName;
+            if (volProp->RealDeviceName.Length > 0)
+            {
+                workingName = &volProp->RealDeviceName;
+            }
+            else if (volProp->FileSystemDeviceName.Length > 0)
+            {
+                workingName = &volProp->FileSystemDeviceName;
+            }
+            else
+            {
+                //
+                //  No name, don't save the context
+                //
+
+                status = STATUS_FLT_DO_NOT_ATTACH;
+                leave;
+            }
+
+            //
+            //  Get size of buffer to allocate.  This is the length of the
+            //  string plus room for a trailing colon.
+            //
+
+            USHORT size = workingName->Length + sizeof(WCHAR);
+
+            //
+            //  Now allocate a buffer to hold this name
+            //
+
+            volumeContext->Name.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+                size,
+                AA_LIFE_EXPORT_VOLUME_NAME_TAG);
+            if (volumeContext->Name.Buffer == NULL)
+            {
+                status = STATUS_INSUFFICIENT_RESOURCES;
+                leave;
+            }
+
+            //
+            //  Init the rest of the fields
+            //
+
+            volumeContext->Name.Length = 0;
+            volumeContext->Name.MaximumLength = size;
+
+            // Copy the name
+            RtlCopyUnicodeString(&volumeContext->Name,
+                workingName);
+
+            //  Put a trailing colon to make the display look good
+            RtlAppendUnicodeToString(&volumeContext->Name, L":");
+        }
+
+        // Set context
+        status = FltSetVolumeContext(aFltObjects->Volume,
+            FLT_SET_CONTEXT_KEEP_IF_EXISTS,
+            volumeContext,
+            NULL);
+
+        //  It is OK for the context to already be defined
+        if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
+        {
+            status = STATUS_SUCCESS;
+        }
+    }
+    finally
+    {
+        //
+        //  Always release the context.  If the set failed, it will free the
+        //  context.  If not, it will remove the reference added by the set.
+        //  Note that the name buffer in the ctx will get freed by the context
+        //  cleanup routine.
+        //
+
+        if (volumeContext)
+        {
+            FltReleaseContext(volumeContext);
+            volumeContext = NULL;
+        }
+
+        //
+        //  Remove the reference added to the device object by
+        //  FltGetDiskDeviceObject.
+        //
+        if (deviceObject != NULL)
+        {
+            ObDereferenceObject(deviceObject);
+        }
+    }
+
     return status;
 }
 

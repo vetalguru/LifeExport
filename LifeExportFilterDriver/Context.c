@@ -12,6 +12,7 @@ AA_CreateFileContext(
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(PAGE, AA_CreateFileContext)
     #pragma alloc_text(PAGE, AA_FileContextCleanup)
+    #pragma alloc_text(PAGE, AA_VolumeContextCleanup)
 #endif
 
 
@@ -85,6 +86,27 @@ Return Value:
 
     PAGED_CODE()
 
-        /*PAA_FILE_CONTEXT fileContext = (PAA_FILE_CONTEXT)aContext;*/
+    /*PAA_FILE_CONTEXT fileContext = (PAA_FILE_CONTEXT)aContext;*/
+}
+
+
+VOID
+AA_VolumeContextCleanup(
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
+)
+{
+    PAA_VOLUME_CONTEXT volumeContext = aContext;
+    
+    PAGED_CODE();
+    
+    FLT_ASSERT(aContextType == FLT_VOLUME_CONTEXT);
+    
+    if (volumeContext->Name.Buffer != NULL)
+    {
+        ExFreePool(volumeContext->Name.Buffer);
+        volumeContext->Name.Buffer = NULL;
+    }
+    UNREFERENCED_PARAMETER(aContextType);
 }
 

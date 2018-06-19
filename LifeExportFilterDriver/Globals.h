@@ -11,7 +11,13 @@
 //*************************************************************************
 //    Global variables
 //*************************************************************************
-#define AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG	'AACc'
+
+
+#define AA_MIN_SECTOR_SIZE  0x200 // 512 bytes
+
+
+#define AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG   'ccAA'
+#define AA_LIFE_EXPORT_VOLUME_NAME_TAG          'tvAA'
 
 
 typedef struct _AA_STREAM_CONTEXT
