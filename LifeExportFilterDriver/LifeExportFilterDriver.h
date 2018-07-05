@@ -2,6 +2,7 @@
 #define _LIFE_EXPORT_FILTER_DRIVER_H_
 
 #include <fltKernel.h>
+#include "Communication.h"
 
 
 //*************************************************************************
@@ -71,6 +72,19 @@ AA_PostRead(
     _In_                           PCFLT_RELATED_OBJECTS    aFltObjects,
     _In_opt_                       PVOID                    aCompletionContext,
     _In_                           FLT_POST_OPERATION_FLAGS aFlags
+);
+
+
+NTSTATUS
+AA_CreateCommunicationPort(
+    _In_ PSECURITY_DESCRIPTOR        aSecurityDescription,
+    _In_ LIFE_EXPORT_CONNECTION_TYPE aConnectionType
+);
+
+
+NTSTATUS
+AA_CloseCommunicationPort(
+    _In_ LIFE_EXPORT_CONNECTION_TYPE aConnectionType
 );
 
 

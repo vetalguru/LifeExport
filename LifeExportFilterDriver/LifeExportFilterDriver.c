@@ -1,13 +1,82 @@
 #include "LifeExportFilterDriver.h"
 #include "Globals.h"
-#include "CommunicationPort.h"
 #include "Communication.h"
-#include "Context.h"
 #include "Utility.h"
 
 //*************************************************************************
 //    Driver initialization and unload routines.
 //*************************************************************************
+
+//
+// Local function declaration
+//
+NTSTATUS
+AA_SendUnloadingMessageToUserMode(
+    VOID
+);
+
+NTSTATUS
+AA_CreateFileContext(
+    _Outptr_ PAA_FILE_CONTEXT *aFileContext
+);
+
+
+VOID
+AA_FileContextCleanup(
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
+);
+
+
+VOID
+AA_VolumeContextCleanup(
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
+);
+
+NTSTATUS
+AA_ConnectNotifyCallback(
+    _In_                             PFLT_PORT aClientPort,
+    _In_                             PVOID     aServerPortCookie,
+    _In_reads_bytes_(aSizeOfContext) PVOID     aConnectionContext,
+    _In_                             ULONG     aSizeOfContext,
+    _Outptr_result_maybenull_        PVOID     *aConnectionCookie
+);
+
+
+NTSTATUS
+AA_MessageNotifyCallback(
+    _In_                                                                     PVOID  aConnectionCoockie,
+    _In_reads_bytes_opt_(aInputBufferSize)                                   PVOID  aInputBuffer,
+    _In_                                                                     ULONG  aInputBufferSize,
+    _Out_writes_bytes_to_opt_(aOutputBufferSize, *aReturnOutputBufferLength) PVOID  aOutputBuffer,
+    _In_                                                                     ULONG  aOutputBufferSize,
+    _Out_                                                                    PULONG aReturnOutputBufferLength
+);
+
+
+VOID
+AA_DisconnectNotifyCallback(
+    _In_opt_ PVOID aConnectionCookie
+);
+
+FLT_POSTOP_CALLBACK_STATUS
+AA_ChangePostReadBuffersWhenSafe(
+    _Inout_ PFLT_CALLBACK_DATA       aData,
+    _In_    PCFLT_RELATED_OBJECTS    aFltObjects,
+    _In_    PVOID                    aCompletionContext,
+    _In_    FLT_POST_OPERATION_FLAGS aFlags
+);
+
+
+NTSTATUS
+AA_CopyUserModeBufferToKernelByProcessId(
+    ULONG aCurrentProcessId,
+    PVOID aDestinationKernelBufferPrt,
+    PVOID aSourceUserModeBufferPtr,
+    ULONG aCopySize
+);
+
 
 
 //
@@ -50,16 +119,16 @@ CONST FLT_CONTEXT_REGISTRATION ContextRegistration[] =
         FLT_FILE_CONTEXT,
         0,
         AA_FileContextCleanup,
-        sizeof(AA_FILE_CONTEXT),
-        AA_FILE_CONTEXT_TAG
+        AA_FILE_CONTEXT_SIZE,
+        AA_LIFE_EXPORT_FILE_CONTEXT_TAG
     },
 
     {
         FLT_VOLUME_CONTEXT,
         0,
         AA_VolumeContextCleanup,
-        sizeof(AA_VOLUME_CONTEXT),
-        AA_VOLUME_CONTEXT_TAG
+        AA_VOLUME_CONTEXT_SIZE,
+        AA_LIFE_EXPORT_VOLUME_CONTEXT_TAG
     },
 
     {
@@ -92,15 +161,6 @@ CONST FLT_REGISTRATION FilterRegistration = {
 };
 
 
-//
-// Local function declaration
-//
-NTSTATUS
-AA_SendUnloadingMessageToUserMode(
-    VOID
-);
-
-
 #ifdef ALLOC_PRAGMA
     #pragma alloc_text(INIT, DriverEntry)
     #pragma alloc_text(PAGE, AA_InstanceSetup)
@@ -110,8 +170,17 @@ AA_SendUnloadingMessageToUserMode(
     #pragma alloc_text(PAGE, AA_PreClose)
     #pragma alloc_text(PAGE, AA_PreRead)
     #pragma alloc_text(PAGE, AA_PostRead)
+    #pragma alloc_text(PAGE, AA_CreateCommunicationPort)
+    #pragma alloc_text(PAGE, AA_CloseCommunicationPort)
     // Local function
     #pragma alloc_text(PAGE, AA_SendUnloadingMessageToUserMode)
+    #pragma alloc_text(PAGE, AA_CreateFileContext)
+    #pragma alloc_text(PAGE, AA_FileContextCleanup)
+    #pragma alloc_text(PAGE, AA_VolumeContextCleanup)
+    #pragma alloc_text(PAGE, AA_ConnectNotifyCallback)
+    #pragma alloc_text(PAGE, AA_MessageNotifyCallback)
+    #pragma alloc_text(PAGE, AA_DisconnectNotifyCallback)
+    #pragma alloc_text(PAGE, AA_ChangePostReadBuffersWhenSafe)
 #endif
 
 
@@ -149,11 +218,25 @@ Return Value:
     // TODO: Init grobal data
     RtlZeroMemory(&GlobalData, sizeof(GlobalData));
 
+    //
+    //  Init lookaside list used to allocate our context structure used to
+    //  pass information from out preOperation callback to our postOperation
+    //  callback.
+    //
+    ExInitializeNPagedLookasideList(&GlobalData.Pre2PostContextList,
+        NULL,
+        NULL,
+        0,
+        sizeof(AA_PRE_2_POST_READ_CONTEXT),
+        AA_LIFE_EXPORT_PRE_2_POST_CONTEXT_TAG,
+        0);
+
     // Register filter with FltMgr
     status = FltRegisterFilter(aDriverObject, &FilterRegistration, &GlobalData.FilterHandle);
     FLT_ASSERT(NT_SUCCESS(status));
     if (!NT_SUCCESS(status))
     {
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -169,6 +252,7 @@ Return Value:
             GlobalData.FilterHandle = NULL;
         }
 
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -190,6 +274,7 @@ Return Value:
             GlobalData.FilterHandle = NULL;
         }
 
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -218,6 +303,7 @@ Return Value:
             GlobalData.FilterHandle = NULL;
         }
 
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -253,6 +339,7 @@ Return Value:
             GlobalData.FilterHandle = NULL;
         }
 
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -296,6 +383,7 @@ Return Value:
             GlobalData.FilterHandle = NULL;
         }
 
+        ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
         return status;
     }
 
@@ -539,66 +627,10 @@ Return Value:
     FltUnregisterFilter(GlobalData.FilterHandle);
     GlobalData.FilterHandle = NULL;
 
-    // TODO: Free global data
+    // Delete lookaside list
+    ExDeleteNPagedLookasideList(&GlobalData.Pre2PostContextList);
 
     return STATUS_SUCCESS;
-}
-
-
-//
-// Local function definition
-//
-
-NTSTATUS
-AA_SendUnloadingMessageToUserMode (
-    VOID
-)
-/*++
-
-Routine Description:
-
-    This routine sends unloading message to the user program.
-
-Arguments:
-
-    None.
-
-Return Value:
-
-    The return value is the status of the operation.
-
---*/
-{
-    PAGED_CODE();
-
-    if (GlobalData.ClientPortControl == NULL)
-    {
-        return STATUS_HANDLES_CLOSED;
-    }
-
-    LIFE_EXPORT_CONTROL_NOTIFICATION_REQUEST request = { 0 };
-    request.Message = CONTROL_RESULT_UNLOADING;
-
-    LIFE_EXPORT_CONTROL_NOTIFICATION_RESPONSE response = { 0 };
-    ULONG replyLength = sizeof(response);
-    NTSTATUS status = FltSendMessage(GlobalData.FilterHandle,
-        &GlobalData.ClientPortControl,
-        &request,
-        sizeof(request),
-        &response,
-        &replyLength,
-        NULL);
-    if (!NT_SUCCESS(status))
-    {
-        return status;
-    }
-
-    if (response.ConnectionResult != CONTROL_RESULT_UNLOAD)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    return status;
 }
 
 
@@ -777,7 +809,7 @@ Return Value:
     PAA_FILE_CONTEXT fileContext = NULL;
     status = FltGetFileContext(aData->Iopb->TargetInstance,
         aData->Iopb->TargetFileObject,
-        &fileContext);
+        (PFLT_CONTEXT*)&fileContext);
     if (status == STATUS_NOT_FOUND)
     {
         LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST request = { 0 };
@@ -827,7 +859,7 @@ Return Value:
         if (response.ConnectionResult == CREATE_RESULT_EXPORT_FILE)
         {
             // Need to create a context for the exported file if it is not created
-            AA_CreateFileContext(&fileContext);
+            status = AA_CreateFileContext(&fileContext);
             if (!NT_SUCCESS(status))
             {
                 return FLT_POSTOP_FINISHED_PROCESSING;
@@ -901,10 +933,10 @@ Return Value:
     PAA_FILE_CONTEXT fileContext = NULL;
     NTSTATUS status = FltGetFileContext(aFltObjects->Instance,
         aFltObjects->FileObject,
-        &fileContext);
+        (PFLT_CONTEXT*)&fileContext);
     if (NT_SUCCESS(status))
     {
-        FltReleaseContext(fileContext);
+        FltReleaseContext((PFLT_CONTEXT)fileContext);
     }
 
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -940,8 +972,9 @@ Return Value:
 
 --*/
 {
-    UNREFERENCED_PARAMETER(aFltObjects);
-    UNREFERENCED_PARAMETER(aCompletionContext);
+    FLT_PREOP_CALLBACK_STATUS retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+    NTSTATUS status = STATUS_SUCCESS;
+
 
     //  Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
     if ((aData->Iopb->IrpFlags & IRP_PAGING_IO) ||
@@ -951,9 +984,11 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    //  Since Fast I/O operations cannot be queued, we could return 
+    //  FLT_PREOP_SUCCESS_NO_CALLBACK at this point. 
     if (!FLT_IS_IRP_OPERATION(aData))
     {
-        return FLT_PREOP_DISALLOW_FASTIO;
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
     if (GlobalData.ServerPortRead == NULL)
@@ -966,49 +1001,140 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    PAA_VOLUME_CONTEXT volContext = NULL;
     PAA_FILE_CONTEXT fileContext = NULL;
-
-    NTSTATUS status = FltGetFileContext(aData->Iopb->TargetInstance,
-        aData->Iopb->TargetFileObject,
-        &fileContext);
-    if (!NT_SUCCESS(status))
+    try
     {
-        // It is not life exported file
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
-    }
+        //
+        //  If they are trying to read ZERO bytes, then don't do anything and
+        //  we don't need a post-operation callback.
+        //
 
-    LIFE_EXPORT_READ_NOTIFICATION_REQUEST request = { 0 };
-    RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
-    request.BlockFileOffset = aData->Iopb->Parameters.Read.ByteOffset.QuadPart;
-    request.BlockLength = aData->Iopb->Parameters.Read.Length;
-
-    LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
-    ULONG responseLength = sizeof(response);
-    status = FltSendMessage(GlobalData.FilterHandle,
-        &GlobalData.ClientPortRead,
-        &request,
-        sizeof(request),
-        &response,
-        &responseLength,
-        NULL);
-    if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
-    {
-        if (status == STATUS_PORT_DISCONNECTED)
+        PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
+        ULONG readLen = iopb->Parameters.Read.Length;
+        if (readLen == 0)
         {
-            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
-            GlobalData.ClientPortRead = NULL;
-            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+            leave;
         }
 
-        if (status != STATUS_TIMEOUT)
+        status = FltGetVolumeContext(aFltObjects->Filter,
+            aFltObjects->Volume,
+            (PFLT_CONTEXT*)&volContext);
+        if (!NT_SUCCESS(status))
         {
-            return FLT_PREOP_SUCCESS_NO_CALLBACK;
+            leave;
         }
 
-        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+        if (FlagOn(IRP_NOCACHE, iopb->IrpFlags))
+        {
+            readLen = (ULONG)ROUND_TO_SIZE(readLen, volContext->SectorSize);
+        }
+
+        status = FltGetFileContext(aData->Iopb->TargetInstance,
+            aData->Iopb->TargetFileObject,
+            (PFLT_CONTEXT*)&fileContext);
+        if (!NT_SUCCESS(status))
+        {
+            // It is not life exported file
+            leave;
+        }
+
+        // Create request
+        LIFE_EXPORT_READ_NOTIFICATION_REQUEST request;
+        RtlZeroMemory(&request, sizeof(request));
+        RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
+        request.BlockFileOffset = aData->Iopb->Parameters.Read.ByteOffset.QuadPart;
+        request.BlockLength = aData->Iopb->Parameters.Read.Length;
+        request.RequestType = READ_NOTIFICATION_PRE_READ_TYPE;
+
+        // Create response
+        LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+        ULONG responseLength = sizeof(response);
+        status = FltSendMessage(GlobalData.FilterHandle,
+            &GlobalData.ClientPortRead,
+            &request,
+            sizeof(request),
+            &response,
+            &responseLength,
+            NULL);
+        if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+        {
+            if (status == STATUS_PORT_DISCONNECTED)
+            {
+                FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+                GlobalData.ClientPortRead = NULL;
+            }
+
+            leave;
+        }
+
+        switch (response.ReadResultAction)
+        {
+            case SUCCESS_WITH_NO_POST_CALLBACK:
+            {
+                retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+                break;
+            }
+            case SUCCESS_WITH_POST_CALLBACK:
+            {
+                retValue = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+                break;
+            }
+            case COMPLETE_WITH_NO_POST_CALLBACK:
+            {
+                retValue = FLT_PREOP_COMPLETE;
+                break;
+            }
+            default:
+            {
+                retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+            }
+        }
+
+        if (retValue != FLT_PREOP_SUCCESS_WITH_CALLBACK)
+        {
+            leave;
+        }
+
+        /*if (response.UserBuffer.BufferPtr == NULL ||
+            response.UserBuffer.BufferSize == 0LU)
+        {
+            retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+            leave;
+        }*/
+
+        PAA_PRE_2_POST_READ_CONTEXT p2pContext = NULL;
+        p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)ExAllocateFromNPagedLookasideList(&GlobalData.Pre2PostContextList);
+        if (p2pContext == NULL)
+        {
+            leave;
+        }
+
+        // Set user-mode buffer pointer
+        p2pContext->Buffer.BufferPtr = response.UserBuffer.BufferPtr;
+        p2pContext->Buffer.BufferSize = response.UserBuffer.BufferSize;
+        p2pContext->Buffer.CurrentProcessId = response.UserBuffer.CurrentProcessId;
+
+        p2pContext->VolumeContext = volContext;
+
+        *aCompletionContext = p2pContext;
+    }
+    finally
+    {
+        if (fileContext != NULL)
+        {
+            FltReleaseContext(fileContext);
+            fileContext = NULL;
+        }
+
+        if (volContext != NULL)
+        {
+            FltReleaseContext(volContext);
+            volContext = NULL;
+        }
     }
 
-    return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    return retValue;
 }
 
 
@@ -1043,11 +1169,885 @@ Return Value:
     
 --*/
 {
-    UNREFERENCED_PARAMETER(aData);
+    FLT_POSTOP_CALLBACK_STATUS retValue = FLT_POSTOP_FINISHED_PROCESSING;
+    PAA_PRE_2_POST_READ_CONTEXT p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)aCompletionContext;
+    BOOLEAN cleanupAllocatedBuffer = TRUE;
+    PVOID originBuf = NULL;
+    PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    FLT_ASSERT(!FlagOn(aFlags, FLTFL_POST_OPERATION_DRAINING));
+
+    PAA_FILE_CONTEXT fileContext = NULL;
+    try
+    {
+        if (!FLT_IS_IRP_OPERATION(aData))
+        {
+            leave;
+        }
+
+        if (!NT_SUCCESS(aData->IoStatus.Status) ||
+            aData->IoStatus.Information == 0)
+        {
+            leave;
+        }
+
+        //  Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
+        if ((aData->Iopb->IrpFlags & IRP_PAGING_IO) ||
+            (aData->Iopb->IrpFlags & IRP_SYNCHRONOUS_PAGING_IO) ||
+            IoGetTopLevelIrp())
+        {
+            leave;
+        }
+
+        if (GlobalData.ServerPortRead == NULL)
+        {
+            leave;
+        }
+
+        if (GlobalData.ClientPortRead == NULL)
+        {
+            leave;
+        }
+
+        status = FltGetFileContext(aData->Iopb->TargetInstance,
+            aData->Iopb->TargetFileObject,
+            (PFLT_CONTEXT*)&fileContext);
+        if (!NT_SUCCESS(status))
+        {
+            // It is not life exported file
+            leave;
+        }
+
+        // Try get sustem buffer pointer
+        // https://docs.microsoft.com/en-us/windows-hardware/drivers/ifs/accessing-user-buffers-in-a-postoperation-callback-routine
+        if (iopb->Parameters.Read.MdlAddress != NULL)
+        {
+            //
+            //  This should be a simple MDL. We don't expect chained MDLs
+            //  this high up the stack
+            //
+            FLT_ASSERT(((PMDL)iopb->Parameters.Read.MdlAddress)->Next == NULL);
+
+            //
+            //  Since there is a MDL defined for the original buffer, get a
+            //  system address for it so we can copy the data back to it.
+            //  We must do this because we don't know what thread context
+            //  we are in.
+            //
+            originBuf = MmGetSystemAddressForMdlSafe(iopb->Parameters.Read.MdlAddress,
+                NormalPagePriority | MdlMappingNoExecute);
+            if (originBuf == NULL)
+            {
+                //
+                //  If we failed to get a SYSTEM address, mark that the read
+                //  failed and return.
+                //
+                aData->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                aData->IoStatus.Information = 0;
+
+                leave;
+            }
+        }
+        else if (FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) ||
+            FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_FAST_IO_OPERATION))
+        {
+            //
+            //  If this is a system buffer, just use the given address because
+            //      it is valid in all thread contexts.
+            //  If this is a FASTIO operation, we can just use the
+            //      buffer (inside a try/except) since we know we are in
+            //      the correct thread context (you can't pend FASTIO's).
+            //
+
+            originBuf = iopb->Parameters.Read.ReadBuffer;
+        }
+        else
+        {
+            //
+            //  They don't have a MDL and this is not a system buffer
+            //  or a fastio so this is probably some arbitrary user
+            //  buffer.  We can not do the processing at DPC level so
+            //  try and get to a safe IRQL so we can do the processing.
+            //
+
+            if (FltDoCompletionProcessingWhenSafe(aData,
+                aFltObjects,
+                aCompletionContext,
+                aFlags,
+                AA_ChangePostReadBuffersWhenSafe,
+                &retValue))
+            {
+                //
+                //  This operation has been moved to a safe IRQL, the called
+                //  routine will do (or has done) the freeing so don't do it
+                //  in our routine.
+                //
+
+                cleanupAllocatedBuffer = FALSE;
+            }
+            else
+            {
+                //
+                //  We are in a state where we can not get to a safe IRQL and
+                //  we do not have a MDL.  There is nothing we can do to safely
+                //  copy the data back to the users buffer, fail the operation
+                //  and return.  This shouldn't ever happen because in those
+                //  situations where it is not safe to post, we should have
+                //  a MDL.
+                //
+
+                aData->IoStatus.Status = STATUS_UNSUCCESSFUL;
+                aData->IoStatus.Information = 0;
+            }
+
+            leave;
+        }
+
+        //
+        //  We either have a system buffer or this is a fastio operation
+        //  so we are in the proper context.  Copy the data handling an
+        //  exception.
+        //
+
+        try
+        {
+            if (p2pContext != NULL)
+            {
+                if (originBuf != NULL)
+                {
+                    // OLD CODE
+                    // /*ULONG copySize = aData->IoStatus.Information;
+                    // if (copySize > p2pContext->Buffer.BufferSize)
+                    // {
+                    //     copySize = p2pContext->Buffer.BufferSize;
+                    // }*/
+
+                    // ULONG copySize = p2pContext->Buffer.BufferSize;
+                    // RtlCopyMemory(originBuf, p2pContext->Buffer.BufferPtr, copySize);
+                    // // memset(originBuf, 'c', aData->IoStatus.Information);
+
+                    // FltSetCallbackDataDirty(aData);
+
+                    ULONG copySize = (ULONG)aData->IoStatus.Information;
+                    if (copySize > p2pContext->Buffer.BufferSize)
+                    {
+                         copySize = p2pContext->Buffer.BufferSize;
+                    }
+
+                    status = AA_CopyUserModeBufferToKernelByProcessId(
+                        p2pContext->Buffer.CurrentProcessId,
+                        originBuf,
+                        p2pContext->Buffer.BufferPtr,
+                        copySize);
+                    if (NT_SUCCESS(status))
+                    {
+                        FltSetCallbackDataDirty(aData);
+                    }
+                }
+            }
+        }
+        except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            //
+            //  The copy failed, return an error, failing the operation.
+            //
+
+            aData->IoStatus.Status = GetExceptionCode();
+            aData->IoStatus.Information = 0;
+        }
+    }
+    finally
+    {
+        if (cleanupAllocatedBuffer)
+        {
+            //
+            // Sent result to user-mode
+            //
+
+            // Create request with results and user-buffer pointer
+            LIFE_EXPORT_READ_NOTIFICATION_REQUEST request;
+            RtlZeroMemory(&request, sizeof(request));
+
+            if (fileContext != NULL)
+            {
+                RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
+            }
+
+            request.BlockFileOffset = iopb->Parameters.Read.ByteOffset.QuadPart;
+            request.BlockLength = iopb->Parameters.Read.Length;
+            request.RequestType = READ_NOTIFICATION_POST_READ_TYPE;
+
+            if (p2pContext != NULL)
+            {
+                request.UserBuffer.BufferPtr = p2pContext->Buffer.BufferPtr;
+                request.UserBuffer.BufferSize = p2pContext->Buffer.BufferSize;
+            }
+
+            request.Status = aData->IoStatus.Status;
+
+            // Response
+            LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+            ULONG responseSize = sizeof(response);
+
+            status = FltSendMessage(GlobalData.FilterHandle,
+                &GlobalData.ClientPortRead,
+                &request,
+                sizeof(request),
+                &response,
+                &responseSize,
+                NULL);
+            if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT)
+            {
+                if (status == STATUS_PORT_DISCONNECTED)
+                {
+                    FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+                    GlobalData.ClientPortRead = NULL;
+                }
+            }
+
+            /*if (p2pContext != NULL)
+            {
+                FltReleaseContext(p2pContext->VolumeContext);
+
+                ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
+            }*/
+        }
+
+        if (fileContext != NULL)
+        {
+            FltReleaseContext(fileContext);
+            fileContext = NULL;
+        }
+    }
+
+    return retValue;
+}
+
+
+FLT_POSTOP_CALLBACK_STATUS
+AA_ChangePostReadBuffersWhenSafe(
+    _Inout_ PFLT_CALLBACK_DATA       aData,
+    _In_    PCFLT_RELATED_OBJECTS    aFltObjects,
+    _In_    PVOID                    aCompletionContext,
+    _In_    FLT_POST_OPERATION_FLAGS aFlags
+)
+{
     UNREFERENCED_PARAMETER(aFltObjects);
-    UNREFERENCED_PARAMETER(aCompletionContext);
     UNREFERENCED_PARAMETER(aFlags);
 
+    if (aData == NULL)
+    {
+        return FLT_POSTOP_FINISHED_PROCESSING; // STATUS_INVALID_PARAMETER_1;
+    }
+
+    PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
+
+    PAA_PRE_2_POST_READ_CONTEXT p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)aCompletionContext;
+    if (p2pContext == NULL)
+    {
+        return FLT_POSTOP_FINISHED_PROCESSING; // STATUS_INVALID_PARAMETER_3;
+    }
+
+    FLT_ASSERT(aData->IoStatus.Information != 0);
+
+    //
+    //  This is some sort of user buffer without a MDL, lock the user buffer
+    //  so we can access it.  This will create a MDL for it.
+    //
+    NTSTATUS status = FltLockUserBuffer(aData);
+    if (!NT_SUCCESS(status))
+    {
+        //
+        //  If we can't lock the buffer, fail the operation
+        //
+        aData->IoStatus.Status = status;
+        aData->IoStatus.Information = 0;
+    }
+    else
+    {
+        //
+        //  Get a system address for this buffer.
+        //
+        PVOID originBuffer = MmGetSystemAddressForMdlSafe(iopb->Parameters.Read.MdlAddress,
+            NormalPagePriority | MdlMappingNoExecute);
+        if (originBuffer == NULL)
+        {
+            //
+            //  If we couldn't get a SYSTEM buffer address, fail the operation
+            //
+            aData->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+            aData->IoStatus.Information = 0;
+        }
+        else
+        {
+            //
+            //  Copy the data to the original buffer.  Note that we
+            //  don't need a try/except because we will always have a system
+            //  buffer address.
+            //
+            if (p2pContext != NULL && originBuffer != NULL)
+            {
+                // OLD SOURCE CODE
+                // /*ULONG copySize = aData->IoStatus.Information;
+                // if (copySize > p2pContext->Buffer.BufferSize)
+                // {
+                //     copySize = p2pContext->Buffer.BufferSize;
+                // }*/
+
+                // ULONG copySize = p2pContext->Buffer.BufferSize;
+                // RtlCopyMemory(originBuffer, p2pContext->Buffer.BufferPtr, copySize);
+                // // memset(originBuffer, 'c', aData->IoStatus.Information);
+                // FltSetCallbackDataDirty(aData);
+
+                ULONG copySize = (ULONG)aData->IoStatus.Information;
+                if (copySize > p2pContext->Buffer.BufferSize)
+                {
+                     copySize = p2pContext->Buffer.BufferSize;
+                }
+
+                status = AA_CopyUserModeBufferToKernelByProcessId(
+                    p2pContext->Buffer.CurrentProcessId,
+                    originBuffer,
+                    p2pContext->Buffer.BufferPtr,
+                    copySize);
+                if (NT_SUCCESS(status))
+                {
+                    FltSetCallbackDataDirty(aData);
+                }
+            }
+        }
+    }
+
+    //
+    // Send result to user-mode
+    //
+    PAA_FILE_CONTEXT fileContext = NULL;
+    status = FltGetFileContext(aData->Iopb->TargetInstance,
+        aData->Iopb->TargetFileObject,
+        (PFLT_CONTEXT*)&fileContext);
+    if (!NT_SUCCESS(status))
+    {
+        // TODO: Need to process this case
+    }
+
+    LIFE_EXPORT_READ_NOTIFICATION_REQUEST request;
+    RtlZeroMemory(&request, sizeof(request));
+    RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
+    request.BlockFileOffset = iopb->Parameters.Read.ByteOffset.QuadPart;
+    request.BlockLength = iopb->Parameters.Read.Length;
+    request.RequestType = READ_NOTIFICATION_POST_READ_TYPE;
+
+    if (p2pContext != NULL)
+    {
+        request.UserBuffer.BufferPtr = p2pContext->Buffer.BufferPtr;
+        request.UserBuffer.BufferSize = p2pContext->Buffer.BufferSize;
+    }
+
+    request.Status = aData->IoStatus.Status;
+    ULONG requestSize = sizeof(request);
+
+    // Request
+    LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+    ULONG responseSize = sizeof(response);
+
+    status = FltSendMessage(GlobalData.FilterHandle,
+        &GlobalData.ClientPortRead,
+        &request,
+        requestSize,
+        &response,
+        &responseSize,
+        NULL);
+    if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT)
+    {
+        if (status == STATUS_PORT_DISCONNECTED)
+        {
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+            GlobalData.ClientPortRead = NULL;
+        }
+    }
+
+    if (fileContext != NULL)
+    {
+        FltReleaseContext(fileContext);
+        fileContext = NULL;
+    }
+
+    /*if (p2pContext != NULL)
+    {
+    FltReleaseContext(p2pContext->VolumeContext);
+    ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
+    }*/
+
     return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+
+NTSTATUS
+AA_CreateCommunicationPort(
+    _In_ PSECURITY_DESCRIPTOR        aSecurityDescription,
+    _In_ LIFE_EXPORT_CONNECTION_TYPE aConnectionType
+)
+{
+    PAGED_CODE();
+
+    if (aSecurityDescription == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    // Get port
+    PCWSTR portName = NULL;
+    PFLT_PORT *serverPort = NULL;
+    switch (aConnectionType)
+    {
+        case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+        {
+            portName = AA_CREATE_PORT_NAME;
+            serverPort = &GlobalData.ServerPortCreate;
+            break;
+        }
+        case LIFE_EXPORT_READ_CONNECTION_TYPE:
+        {
+            portName = AA_READ_PORT_NAME;
+            serverPort = &GlobalData.ServerPortRead;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            portName = AA_CONTROL_PORT_NAME;
+            serverPort = &GlobalData.ServerPortControl;
+            break;
+        }
+        default:
+        {
+            FLT_ASSERTMSG("No such connection type\n", FALSE);
+            return STATUS_INVALID_PARAMETER_2;
+        }
+    }
+
+    UNICODE_STRING strPortName;
+    RtlInitUnicodeString(&strPortName, portName);
+
+    OBJECT_ATTRIBUTES oa;
+    InitializeObjectAttributes(&oa,
+        &strPortName,
+        OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+        NULL,
+        aSecurityDescription
+    );
+
+    NTSTATUS status = FltCreateCommunicationPort(GlobalData.FilterHandle,
+        serverPort,
+        &oa,
+        NULL,
+        AA_ConnectNotifyCallback,
+        AA_DisconnectNotifyCallback,
+        AA_MessageNotifyCallback,
+        AA_MAX_PORT_CONNECTIONS);
+
+    return status;
+}
+
+
+NTSTATUS
+AA_CloseCommunicationPort(
+    _In_ LIFE_EXPORT_CONNECTION_TYPE aConnectionType
+)
+{
+    PFLT_PORT *serverPort = NULL;
+    switch (aConnectionType)
+    {
+    case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+    {
+        serverPort = &GlobalData.ServerPortCreate;
+        break;
+    }
+    case LIFE_EXPORT_READ_CONNECTION_TYPE:
+    {
+        serverPort = &GlobalData.ServerPortRead;
+        break;
+    }
+    case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+    {
+        serverPort = &GlobalData.ServerPortControl;
+        break;
+    }
+    default:
+    {
+        FLT_ASSERTMSG("No such connection type\n", FALSE);
+        return STATUS_INVALID_PARAMETER;
+    }
+    }
+
+    if (serverPort == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    FltCloseCommunicationPort(*serverPort);
+    serverPort = NULL;
+
+    return STATUS_SUCCESS;
+}
+
+
+
+
+
+
+
+//
+// Local function definition
+//
+
+NTSTATUS
+AA_SendUnloadingMessageToUserMode(
+    VOID
+)
+/*++
+
+Routine Description:
+
+This routine sends unloading message to the user program.
+
+Arguments:
+
+None.
+
+Return Value:
+
+The return value is the status of the operation.
+
+--*/
+{
+    PAGED_CODE();
+
+    if (GlobalData.ClientPortControl == NULL)
+    {
+        return STATUS_HANDLES_CLOSED;
+    }
+
+    LIFE_EXPORT_CONTROL_NOTIFICATION_REQUEST request = { 0 };
+    request.Message = CONTROL_RESULT_UNLOADING;
+
+    LIFE_EXPORT_CONTROL_NOTIFICATION_RESPONSE response = { 0 };
+    ULONG replyLength = sizeof(response);
+    NTSTATUS status = FltSendMessage(GlobalData.FilterHandle,
+        &GlobalData.ClientPortControl,
+        &request,
+        sizeof(request),
+        &response,
+        &replyLength,
+        NULL);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    if (response.ConnectionResult != CONTROL_RESULT_UNLOAD)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return status;
+}
+
+
+NTSTATUS
+AA_CreateFileContext(
+    _Outptr_ PAA_FILE_CONTEXT *aFileContext
+)
+/*++
+
+Routine Description:
+
+    This routine creates a new file context
+
+Arguments:
+
+    aFileContext         - Returns the file context
+
+Return Value:
+
+    Status
+
+--*/
+{
+    PAGED_CODE();
+
+    *aFileContext = NULL;
+
+    PAA_FILE_CONTEXT fileContext = NULL;
+    NTSTATUS status = FltAllocateContext(GlobalData.FilterHandle,
+        FLT_FILE_CONTEXT,
+        AA_FILE_CONTEXT_SIZE,
+        PagedPool,
+        &fileContext);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    RtlZeroMemory(fileContext, AA_FILE_CONTEXT_SIZE);
+    *aFileContext = fileContext;
+
+    return STATUS_SUCCESS;
+}
+
+
+VOID
+AA_FileContextCleanup(
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
+)
+/*++
+
+Routine Description:
+
+This routine is called whenever the file context is about to be destroyed.
+Typically we need to clean the data structure inside it.
+
+Arguments:
+
+aContext - Pointer to the PAA_FILE_CONTEXT data structure.
+aContextType - This value should be FLT_FILE_CONTEXT.
+
+Return Value:
+
+None
+
+--*/
+{
+    UNREFERENCED_PARAMETER(aContextType);
+    UNREFERENCED_PARAMETER(aContext);
+
+    PAGED_CODE()
+
+    /* PAA_FILE_CONTEXT fileContext = (PAA_FILE_CONTEXT)aContext; */
+}
+
+
+VOID
+AA_VolumeContextCleanup(
+    _In_ PFLT_CONTEXT     aContext,
+    _In_ FLT_CONTEXT_TYPE aContextType
+)
+{
+    PAA_VOLUME_CONTEXT volumeContext = aContext;
+
+    PAGED_CODE();
+
+    FLT_ASSERT(aContextType == FLT_VOLUME_CONTEXT);
+
+    if (volumeContext->Name.Buffer != NULL)
+    {
+        ExFreePool(volumeContext->Name.Buffer);
+        volumeContext->Name.Buffer = NULL;
+    }
+    UNREFERENCED_PARAMETER(aContextType);
+}
+
+
+NTSTATUS
+AA_ConnectNotifyCallback(
+    _In_                             PFLT_PORT aClientPort,
+    _In_                             PVOID     aServerPortCookie,
+    _In_reads_bytes_(aSizeOfContext) PVOID     aConnectionContext,
+    _In_                             ULONG     aSizeOfContext,
+    _Outptr_result_maybenull_        PVOID     *aConnectionCookie
+)
+{
+    UNREFERENCED_PARAMETER(aClientPort);
+    UNREFERENCED_PARAMETER(aServerPortCookie);
+    UNREFERENCED_PARAMETER(aConnectionContext);
+    UNREFERENCED_PARAMETER(aSizeOfContext);
+    UNREFERENCED_PARAMETER(aConnectionCookie);
+
+    PAGED_CODE();
+
+    PLIFE_EXPORT_CONNECTION_CONTEXT connectionContext = (PLIFE_EXPORT_CONNECTION_CONTEXT)aConnectionContext;
+    if (connectionContext == NULL)
+    {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+
+    PLIFE_EXPORT_CONNECTION_TYPE connectionCookie = ExAllocatePoolWithTag(PagedPool,
+        sizeof(LIFE_EXPORT_CONNECTION_TYPE),
+        AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+    if (connectionCookie == NULL)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    *connectionCookie = connectionContext->Type;
+    switch (connectionContext->Type)
+    {
+        case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+        {
+            GlobalData.ClientPortCreate = aClientPort;
+            *aConnectionCookie = connectionCookie;
+            break;
+        }
+        case LIFE_EXPORT_READ_CONNECTION_TYPE:
+        {
+            GlobalData.ClientPortRead = aClientPort;
+            *aConnectionCookie = connectionCookie;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            GlobalData.ClientPortControl = aClientPort;
+            *aConnectionCookie = connectionCookie;
+            break;
+        }
+        default:
+        {
+            ExFreePoolWithTag(connectionCookie, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+            *aConnectionCookie = NULL;
+            return STATUS_INVALID_PARAMETER_3;
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+
+NTSTATUS
+AA_MessageNotifyCallback(
+    _In_                                                                     PVOID  aConnectionCoockie,
+    _In_reads_bytes_opt_(aInputBufferSize)                                   PVOID  aInputBuffer,
+    _In_                                                                     ULONG  aInputBufferSize,
+    _Out_writes_bytes_to_opt_(aOutputBufferSize, *aReturnOutputBufferLength) PVOID  aOutputBuffer,
+    _In_                                                                     ULONG  aOutputBufferSize,
+    _Out_                                                                    PULONG aReturnOutputBufferLength
+)
+{
+    UNREFERENCED_PARAMETER(aConnectionCoockie);
+    UNREFERENCED_PARAMETER(aInputBuffer);
+    UNREFERENCED_PARAMETER(aInputBufferSize);
+    UNREFERENCED_PARAMETER(aOutputBuffer);
+    UNREFERENCED_PARAMETER(aOutputBufferSize);
+    UNREFERENCED_PARAMETER(aReturnOutputBufferLength);
+
+    PAGED_CODE();
+
+    if (aInputBuffer == NULL || aInputBufferSize == 0UL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+
+VOID
+AA_DisconnectNotifyCallback(
+    _In_opt_ PVOID aConnectionCookie
+)
+{
+    PAGED_CODE();
+
+    PLIFE_EXPORT_CONNECTION_TYPE connectionType = (PLIFE_EXPORT_CONNECTION_TYPE)aConnectionCookie;
+    if (connectionType == NULL)
+    {
+        return;
+    }
+
+    switch (*connectionType)
+    {
+    case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+    {
+        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+        GlobalData.ClientPortCreate = NULL;
+        break;
+    }
+    case LIFE_EXPORT_READ_CONNECTION_TYPE:
+    {
+        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+        GlobalData.ClientPortRead = NULL;
+        break;
+    }
+    case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+    {
+        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortControl);
+        GlobalData.ClientPortControl = NULL;
+        break;
+    }
+    default:
+    {
+        return;
+    }
+    }
+
+    ExFreePoolWithTag(connectionType, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
+    connectionType = NULL;
+}
+
+
+NTSTATUS
+AA_CopyUserModeBufferToKernelByProcessId(
+    ULONG aCurrentProcessId,
+    PVOID aDestinationKernelBufferPrt,
+    PVOID aSourceUserModeBufferPtr,
+    ULONG aCopySize
+)
+{
+    // TODO: Need to check num,bers of parameters when parameter is incorrent
+    
+    if (aCurrentProcessId == 0LU)
+    {
+        return STATUS_INVALID_PARAMETER_1;
+    }
+
+    if (aSourceUserModeBufferPtr == NULL)
+    {
+        return STATUS_INVALID_PARAMETER_2;
+    }
+
+    if (aDestinationKernelBufferPrt == NULL)
+    {
+        return STATUS_INVALID_PARAMETER_3;
+    }
+
+    if (aCopySize == 0LU)
+    {
+        return STATUS_INVALID_PARAMETER_4;
+    }
+
+    PEPROCESS workingProcess = NULL;
+    NTSTATUS status = PsLookupProcessByProcessId((HANDLE)aCurrentProcessId, &workingProcess);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+    
+    KAPC_STATE state = { 0 };
+    try
+    {
+        KeStackAttachProcess(workingProcess, &state);
+
+        RtlCopyMemory(aDestinationKernelBufferPrt, aSourceUserModeBufferPtr, aCopySize);
+
+        KeUnstackDetachProcess(&state);
+
+        if (workingProcess != NULL)
+        {
+            FltObjectDereference(workingProcess);
+            workingProcess = NULL;
+        }
+    }
+    except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        KeUnstackDetachProcess(&state);
+
+        if (workingProcess != NULL)
+        {
+            FltObjectDereference(workingProcess);
+            workingProcess = NULL;
+        }
+    }
+
+    return status;
 }
 
