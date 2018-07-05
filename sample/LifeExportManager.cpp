@@ -17,11 +17,8 @@ namespace LifeExportManagement
 
     LifeExportManager::~LifeExportManager()
     {
-        if (m_driverManager)
-        {
-            delete m_driverManager;
-            m_driverManager = nullptr;
-        }
+        delete m_driverManager;
+        m_driverManager = nullptr;
     }
 
 
@@ -82,9 +79,10 @@ namespace LifeExportManagement
     }
 
 
-    HRESULT LifeExportManager::ReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+    HRESULT LifeExportManager::PreReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
         const PULONGLONG aBlockFileOffset,
-        const PULONGLONG aBlockLength)
+        const PULONGLONG aBlockLength,
+        IDriverHandler::LIFE_EXPORT_USER_BUFFER &aUserBuffer)
     {
         if (aFileIdInfo == NULL)
         {
@@ -102,16 +100,83 @@ namespace LifeExportManagement
         }
 
 #ifndef NDEBUG
-        std::wcout << L"READ File id: " << std::hex << aFileIdInfo->FileId_64.Value;
-        std::wcout << L" file offset: " << *aBlockFileOffset;
-        std::wcout << L" block size: " << *aBlockLength << std::endl;
+        std::wcout << L"PRE READ File id: " << std::hex << aFileIdInfo->FileId_64.Value;
+        std::wcout << L" file offset: " << std::dec << *aBlockFileOffset;
+        std::wcout << L" block size: " << std::dec << *aBlockLength << std::endl;
 #endif // !NDEBUG
 
-        // TODO: Need download part of file if need
+        // TODO: Need download part of file HERE if need
+
+        // ONLY FOR TEST======================
+        char *buffer = new (std::nothrow) char[*aBlockLength];
+        if (buffer)
+        {
+            std::wcout << L"user buffer pointer: " << std::hex << (void*)buffer;
+            std::wcout << L" user buffer size: " << std::dec << *aBlockLength << std::endl;
+
+            memset(buffer, 'c', *aBlockLength);
+
+            std::string buff(buffer, *aBlockLength);
+
+            std::cout << "BUFFER: " << buff.c_str() << std::endl;
+
+            aUserBuffer.BufferPtr = buffer;
+            aUserBuffer.BufferSize = (ULONG)*aBlockLength;
+        }
+
+        //====================================
 
         return S_OK;
     }
 
+    HRESULT LifeExportManager::PostReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+        const PULONGLONG aBlockFileOffset,
+        const PULONGLONG aBlockLength,
+        IDriverHandler::LIFE_EXPORT_USER_BUFFER &aUserBuffer)
+    {
+        if (aFileIdInfo == NULL)
+        {
+            return E_INVALIDARG;
+        }
+
+        if (aBlockFileOffset == NULL)
+        {
+            return E_INVALIDARG;
+        }
+
+        if (aBlockLength == NULL)
+        {
+            return E_INVALIDARG;
+        }
+
+#ifndef NDEBUG
+        std::wcout << L"POST READ File id: " << std::hex << aFileIdInfo->FileId_64.Value;
+        std::wcout << L" file offset: " << *aBlockFileOffset;
+        std::wcout << L" block size: " << *aBlockLength << std::endl;
+#endif  // !NDEBUG
+
+        // TODO: Need to send buffer with changes HERE if need
+
+        // ONLY FOR TEST======================
+        if (aUserBuffer.BufferPtr)
+        {
+            std::wcout << L"POST user buffer pointer: " << std::hex << aUserBuffer.BufferPtr;
+            std::wcout << L" user buffer size: " << std::dec << aUserBuffer.BufferSize << std::endl;
+
+            std::string str((char*)aUserBuffer.BufferPtr, aUserBuffer.BufferSize);
+
+            std::cout << "Buffer: " << str.c_str() << std::endl;
+
+            delete[] aUserBuffer.BufferPtr;
+
+            aUserBuffer.BufferPtr = nullptr;
+            aUserBuffer.BufferSize = 0;
+        }
+
+        //====================================
+
+        return S_OK;
+    }
 
     void LifeExportManager::DriverUnloadingCallback()
     {

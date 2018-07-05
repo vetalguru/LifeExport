@@ -27,9 +27,17 @@ namespace LifeExportManagement
             // Driver manager callbacks
             virtual HRESULT CreatingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
                 LIFE_EXPORT_CONNECTION_RESULT& aResult);
-            virtual HRESULT ReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+
+            virtual HRESULT PreReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
                 const PULONGLONG aBlockFileOffset,
-                const PULONGLONG aBlockLength);
+                const PULONGLONG aBlockLength,
+                IDriverHandler::LIFE_EXPORT_USER_BUFFER& aUserBuffer);
+
+            virtual HRESULT PostReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
+                const PULONGLONG aBlockFileOffset,
+                const PULONGLONG aBlockLength,
+                IDriverHandler::LIFE_EXPORT_USER_BUFFER& aUserBuffer);
+
             virtual void DriverUnloadingCallback();
 
         private:

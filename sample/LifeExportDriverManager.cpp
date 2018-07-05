@@ -1,6 +1,7 @@
 #include "LifeExportDriverManager.h"
 #include "FilterCommunicationPort.h"
 #include "Communication.h"
+#include <cassert>
 
 
 
@@ -356,8 +357,7 @@ namespace LifeExportDriverManagement
         return res;
     }
 
-
-    HRESULT LifeExportDriverManager::readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT* aContext)
+    HRESULT LifeExportDriverManager::readMsgHandlerFunc(LIFE_EXPORT_MANAGER_CONTEXT * aContext)
     {
         if (aContext == NULL)
         {
@@ -408,23 +408,82 @@ namespace LifeExportDriverManagement
             result = S_OK;
             if (aContext && aContext->DriverHandler)
             {
-                // Callback function
-                result = aContext->DriverHandler->ReadingLifeTrackingFileCallback(&requestMessage.Notification.FileId,
-                    &requestMessage.Notification.BlockFileOffset,
-                    &requestMessage.Notification.BlockLength);
-            }
+                // Callback functions
+                switch (requestMessage.Notification.RequestType)
+                {
+                    case READ_NOTIFICATION_PRE_READ_TYPE:
+                    {
+                        IDriverHandler::LIFE_EXPORT_USER_BUFFER userBuffer = { 0 };
+                        userBuffer.BufferPtr = requestMessage.Notification.UserBuffer.BufferPtr;
+                        userBuffer.BufferSize = requestMessage.Notification.UserBuffer.BufferSize;
 
-            USER_LIFE_EXPORT_REPLY_READ_NOTIFICATION replyMessage{ 0 };
-            replyMessage.ReplyHeader.MessageId = requestMessage.Header.MessageId;
-            replyMessage.ReplyHeader.Status = result;
-            CopyMemory(&replyMessage.ResponseData.FileId, &requestMessage.Notification.FileId, sizeof(replyMessage.ResponseData.FileId));
+                        result = aContext->DriverHandler->PreReadingLifeTrackingFileCallback(&requestMessage.Notification.FileId,
+                            &requestMessage.Notification.BlockFileOffset,
+                            &requestMessage.Notification.BlockLength,
+                            userBuffer);
+                        if (result == S_OK)
+                        {
+                            // Send answer
+                            USER_LIFE_EXPORT_REPLY_READ_NOTIFICATION replyMessage{ 0 };
+                            replyMessage.ReplyHeader.MessageId = requestMessage.Header.MessageId;
+                            replyMessage.ReplyHeader.Status = result;
 
-            replyMessage.ResponseData.ReadResult = READ_RESULT_WAIT_BLOCK;
+                            replyMessage.ResponseData.ReadResultAction = SUCCESS_WITH_POST_CALLBACK;
 
-            result = portRead.replyMessage(&replyMessage.ReplyHeader, sizeof(replyMessage));
-            if (FAILED(result))
-            {
-                break;
+                            replyMessage.ResponseData.UserBuffer.BufferPtr = userBuffer.BufferPtr;
+                            replyMessage.ResponseData.UserBuffer.BufferSize = userBuffer.BufferSize;
+
+                            // Get current process handle
+                            replyMessage.ResponseData.UserBuffer.CurrentProcessId = ::GetCurrentProcessId();
+
+                            result = portRead.replyMessage(&replyMessage.ReplyHeader, sizeof(replyMessage));
+                            if (FAILED(result))
+                            {
+                                break;
+                            }
+                        }
+
+                        break;
+                    }
+                    case READ_NOTIFICATION_POST_READ_TYPE:
+                    {
+                        IDriverHandler::LIFE_EXPORT_USER_BUFFER userBuffer = { 0 };
+                        userBuffer.BufferPtr = requestMessage.Notification.UserBuffer.BufferPtr;
+                        userBuffer.BufferSize = requestMessage.Notification.UserBuffer.BufferSize;
+
+                        result = aContext->DriverHandler->PostReadingLifeTrackingFileCallback(&requestMessage.Notification.FileId,
+                            &requestMessage.Notification.BlockFileOffset,
+                            &requestMessage.Notification.BlockLength,
+                            userBuffer);
+                        if (result == S_OK)
+                        {
+                            // Send answer
+                            USER_LIFE_EXPORT_REPLY_READ_NOTIFICATION replyMessage{ 0 };
+                            replyMessage.ReplyHeader.MessageId = requestMessage.Header.MessageId;
+                            replyMessage.ReplyHeader.Status = result;
+                            CopyMemory(&replyMessage.ResponseData.FileId, &requestMessage.Notification.FileId, sizeof(replyMessage.ResponseData.FileId));
+
+                            replyMessage.ResponseData.ReadResultAction = SUCCESS_WITH_NO_POST_CALLBACK;
+
+                            replyMessage.ResponseData.UserBuffer.BufferPtr = userBuffer.BufferPtr;
+                            replyMessage.ResponseData.UserBuffer.BufferSize = userBuffer.BufferSize;
+
+                            result = portRead.replyMessage(&replyMessage.ReplyHeader, sizeof(replyMessage));
+                            if (FAILED(result))
+                            {
+                                break;
+                            }
+                        }
+
+                        break;
+
+                    }
+                    default:
+                    {
+                        result = E_NOTIMPL;
+                        assert(0);
+                    }
+                }
             }
         }
 
