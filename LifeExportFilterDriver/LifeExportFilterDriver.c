@@ -686,6 +686,22 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
+    // Check volume context
+    PFLT_CONTEXT volContext = NULL;
+    NTSTATUS status = FltGetVolumeContext(aFltObjects->Filter,
+        aFltObjects->Volume,
+        &volContext);
+    if (!NT_SUCCESS(status))
+    {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (volContext != NULL)
+    {
+        FltReleaseContext(volContext);
+        volContext = NULL;
+    }
+
     return FLT_PREOP_SYNCHRONIZE;
 }
 
