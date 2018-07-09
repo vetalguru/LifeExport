@@ -404,10 +404,8 @@ AA_InstanceSetup(
     _In_ FLT_FILESYSTEM_TYPE      aVolumeFilesystemType
 )
 {
-    UNREFERENCED_PARAMETER(aFltObjects);
     UNREFERENCED_PARAMETER(aFlags);
     UNREFERENCED_PARAMETER(aVolumeDeviceType);
-    UNREFERENCED_PARAMETER(aVolumeFilesystemType);
 
     NTSTATUS status = STATUS_SUCCESS;
     PAA_VOLUME_CONTEXT volumeContext = NULL;
@@ -417,7 +415,13 @@ AA_InstanceSetup(
 
     try
     {
-        // TODO: Check if file filesystem is supported
+        // Check if file filesystem is supported
+        if (!AA_SUPPORTS_FILE_SYSTEM_TYPES(aVolumeFilesystemType))
+        {
+            // Unsupported file system type
+            status = STATUS_FLT_DO_NOT_ATTACH;
+            leave;
+        }
 
         // Check if context not created for this volume earlier
         status = FltGetVolumeContext(aFltObjects->Filter,

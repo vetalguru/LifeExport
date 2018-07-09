@@ -30,6 +30,16 @@
 
 
 //
+// NTFS supports a file state cache. Since CSVFS is built on top of
+// NTFS, it can also support the cache. 
+//
+#define AA_SUPPORTS_FILE_SYSTEM_TYPES(VolumeFilesystemType) \
+  ( ((VolumeFilesystemType) == FLT_FSTYPE_NTFS)  || \
+    ((VolumeFilesystemType) == FLT_FSTYPE_CSVFS) || \
+    ((VolumeFilesystemType) == FLT_FSTYPE_REFS) )
+
+
+//
 // Contexts
 //
 typedef union _AA_LIFE_EXPORT_FILE_ID_INFO
@@ -89,8 +99,8 @@ typedef struct _GLOBAL_FILTER_DATA
     PFLT_PORT   ServerPortControl; // communication port handle for "CONTROL" messages 
 
     //
-    //  The client ports.
-    //  These ports are assigned at ConnectNotifyCallback and cleaned at DisconnectNotifyCallback
+    // The client ports.
+    // These ports are assigned at ConnectNotifyCallback and cleaned at DisconnectNotifyCallback
     //
     PFLT_PORT   ClientPortCreate;  // connection port regarding the "CREATE" message
     PFLT_PORT   ClientPortRead;    // connection port regarding the "READ" message

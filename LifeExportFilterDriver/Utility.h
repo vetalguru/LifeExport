@@ -160,8 +160,8 @@ AA_ExceptionFilter(
     NTSTATUS status = aExceptionPointer->ExceptionRecord->ExceptionCode;
 
     //
-    //  Certain exceptions shouldn't be dismissed within the filter
-    //  unless we're touching user memory.
+    // Certain exceptions shouldn't be dismissed within the filter
+    // unless we're touching user memory.
     //
 
     if (!FsRtlIsNtstatusExpected(status) && !aAccessingUserBuffer)
