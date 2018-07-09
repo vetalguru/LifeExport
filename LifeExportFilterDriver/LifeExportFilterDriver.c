@@ -434,6 +434,13 @@ AA_InstanceSetup(
             leave;
         }
 
+        // Check device type
+        if (deviceObject->DeviceType != FILE_DEVICE_DISK)
+        {
+            // Not supported
+            status = STATUS_FLT_DO_NOT_ATTACH;
+            leave;
+        }
 
         // Check if context not created for this volume earlier
         status = FltGetVolumeContext(aFltObjects->Filter,
