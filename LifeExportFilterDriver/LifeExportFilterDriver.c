@@ -108,7 +108,6 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] =
     {
         IRP_MJ_OPERATION_END
     }
-
 };
 
 
@@ -134,7 +133,6 @@ CONST FLT_CONTEXT_REGISTRATION ContextRegistration[] =
     {
         FLT_CONTEXT_END
     }
-
 };
 
 
@@ -219,9 +217,9 @@ Return Value:
     RtlZeroMemory(&GlobalData, sizeof(GlobalData));
 
     //
-    //  Init lookaside list used to allocate our context structure used to
-    //  pass information from out preOperation callback to our postOperation
-    //  callback.
+    // Init lookaside list used to allocate our context structure used to
+    // pass information from out preOperation callback to our postOperation
+    // callback.
     //
     ExInitializeNPagedLookasideList(&GlobalData.Pre2PostContextList,
         NULL,
@@ -419,6 +417,22 @@ AA_InstanceSetup(
 
     try
     {
+        // TODO: Check if file filesystem is supported
+
+        // Check if context not created for this volume earlier
+        status = FltGetVolumeContext(aFltObjects->Filter,
+            aFltObjects->Volume,
+            &volumeContext);
+        if (NT_SUCCESS(status))
+        {
+            // Do nothing. Volume context was created earlier
+            leave;
+        }
+
+        //
+        // The volume context was not found. We need to create it
+        //
+
         //
         // Allocate a volume context structure
         //
@@ -430,13 +444,13 @@ AA_InstanceSetup(
         if (!NT_SUCCESS(status))
         {
             //
-            //  We could not allocate a context, quit now
+            // We could not allocate a context, quit now
             //
             leave;
         }
 
         //
-        //  Always get the volume properties, so I can get a sector size
+        // Always get the volume properties, so I can get a sector size
         //
         ULONG resultLen = 0LU;
         status = FltGetVolumeProperties(aFltObjects->Volume,
@@ -449,9 +463,9 @@ AA_InstanceSetup(
         }
 
         //
-        //  Save the sector size in the context for later use.  Note that
-        //  we will pick a minimum sector size if a sector size is not
-        //  specified.
+        // Save the sector size in the context for later use.  Note that
+        // we will pick a minimum sector size if a sector size is not
+        // specified.
         //
 
         FLT_ASSERT((volProp->SectorSize == 0) || (volProp->SectorSize >= AA_MIN_SECTOR_SIZE));
@@ -459,33 +473,33 @@ AA_InstanceSetup(
         volumeContext->SectorSize = max(volProp->SectorSize, AA_MIN_SECTOR_SIZE);
 
         //
-        //  Init the buffer field (which may be allocated later).
+        // Init the buffer field (which may be allocated later).
         //
         volumeContext->Name.Buffer = NULL;
 
         //
-        //  Get the storage device object we want a name for.
+        // Get the storage device object we want a name for.
         //
         status = FltGetDiskDeviceObject(aFltObjects->Volume,
             &deviceObject);
         if (NT_SUCCESS(status))
         {
             //
-            //  Try and get the DOS name.  If it succeeds we will have
-            //  an allocated name buffer.  If not, it will be NULL
+            // Try and get the DOS name. If it succeeds we will have
+            // an allocated name buffer. If not, it will be NULL
             //
             status = IoVolumeDeviceToDosName(deviceObject, &volumeContext->Name);
         }
         else
         {
             //
-            //  If we could not get a DOS name, get the NT name.
+            // If we could not get a DOS name, get the NT name.
             //
 
             FLT_ASSERT(volumeContext->Name.Buffer == NULL);
 
             //
-            //  Figure out which name to use from the properties
+            // Figure out which name to use from the properties
             //
             PUNICODE_STRING workingName;
             if (volProp->RealDeviceName.Length > 0)
@@ -499,7 +513,7 @@ AA_InstanceSetup(
             else
             {
                 //
-                //  No name, don't save the context
+                // No name, don't save the context
                 //
 
                 status = STATUS_FLT_DO_NOT_ATTACH;
@@ -507,14 +521,14 @@ AA_InstanceSetup(
             }
 
             //
-            //  Get size of buffer to allocate.  This is the length of the
-            //  string plus room for a trailing colon.
+            // Get size of buffer to allocate.  This is the length of the
+            // string plus room for a trailing colon.
             //
 
             USHORT size = workingName->Length + sizeof(WCHAR);
 
             //
-            //  Now allocate a buffer to hold this name
+            // Now allocate a buffer to hold this name
             //
 
             volumeContext->Name.Buffer = ExAllocatePoolWithTag(NonPagedPool,
@@ -527,7 +541,7 @@ AA_InstanceSetup(
             }
 
             //
-            //  Init the rest of the fields
+            // Init the rest of the fields
             //
 
             volumeContext->Name.Length = 0;
@@ -537,7 +551,7 @@ AA_InstanceSetup(
             RtlCopyUnicodeString(&volumeContext->Name,
                 workingName);
 
-            //  Put a trailing colon to make the display look good
+            // Put a trailing colon to make the display look good
             RtlAppendUnicodeToString(&volumeContext->Name, L":");
         }
 
@@ -547,7 +561,7 @@ AA_InstanceSetup(
             volumeContext,
             NULL);
 
-        //  It is OK for the context to already be defined
+        // It is OK for the context to already be defined
         if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
         {
             status = STATUS_SUCCESS;
@@ -556,10 +570,10 @@ AA_InstanceSetup(
     finally
     {
         //
-        //  Always release the context.  If the set failed, it will free the
-        //  context.  If not, it will remove the reference added by the set.
-        //  Note that the name buffer in the ctx will get freed by the context
-        //  cleanup routine.
+        // Always release the context.  If the set failed, it will free the
+        // context.  If not, it will remove the reference added by the set.
+        // Note that the name buffer in the ctx will get freed by the context
+        // cleanup routine.
         //
 
         if (volumeContext)
@@ -569,8 +583,8 @@ AA_InstanceSetup(
         }
 
         //
-        //  Remove the reference added to the device object by
-        //  FltGetDiskDeviceObject.
+        // Remove the reference added to the device object by
+        // FltGetDiskDeviceObject.
         //
         if (deviceObject != NULL)
         {
@@ -607,6 +621,8 @@ Return Value:
 {
     PAGED_CODE();
     UNREFERENCED_PARAMETER(aFlags);
+
+    // TODO: Need to free all volume context
 
     // Need send UNLOAD message to user-mode
     AA_SendUnloadingMessageToUserMode();
@@ -742,29 +758,28 @@ Return Value:
     NTSTATUS status = aData->IoStatus.Status;
     if (!NT_SUCCESS(status) || status == STATUS_REPARSE)
     {
-
         // File creation may fail
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    //  After creation, skip it if it is directory
+    // After creation, skip it if it is directory
     BOOLEAN isDir = FALSE;
     status = FltIsDirectory(aFltObjects->FileObject,
         aFltObjects->Instance,
         &isDir);
-    //  If FltIsDirectory failed, we do not know if it is a directoy,
-    //  we let it go through because if it is a directory, it will fail
-    //  at section creation anyway.
+    // If FltIsDirectory failed, we do not know if it is a directoy,
+    // we let it go through because if it is a directory, it will fail
+    // at section creation anyway.
     if (!NT_SUCCESS(status) && isDir)
     {
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    //  We skip the encrypted file open without FILE_WRITE_DATA and FILE_READ_DATA
-    //  This is because if application calls OpenEncryptedFileRaw(...) for backup, 
-    //  it won't have to decrypt the file. In such case, if we scan it, we will hit 
-    //  an assertion error in NTFS because it does not have the encryption context.
-    //  Thus, we have to skip the encrypted file not open for read/write.
+    // We skip the encrypted file open without FILE_WRITE_DATA and FILE_READ_DATA
+    // This is because if application calls OpenEncryptedFileRaw(...) for backup, 
+    // it won't have to decrypt the file. In such case, if we scan it, we will hit 
+    // an assertion error in NTFS because it does not have the encryption context.
+    // Thus, we have to skip the encrypted file not open for read/write.
     ACCESS_MASK desiredAccess = aData->Iopb->Parameters.Create.SecurityContext->DesiredAccess;
     if (!(FlagOn(desiredAccess, FILE_WRITE_DATA)) &&
         !(FlagOn(desiredAccess, FILE_READ_DATA)))
@@ -780,14 +795,14 @@ Return Value:
         }
     }
 
-    //  Skip the alternate data stream
+    // Skip the alternate data stream
     if (AA_IsStreamAlternate(aData))
     {
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
     //
-    // 	Get FileID and send it to usermode
+    // Get FileID and send it to usermode
     //
 
     if (GlobalData.ServerPortCreate == NULL)
@@ -813,7 +828,7 @@ Return Value:
     if (status == STATUS_NOT_FOUND)
     {
         LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST request = { 0 };
-        AA_FILE_ID_INFO fileId;
+        AA_FILE_ID_INFO fileId = { 0 };
         status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &fileId);
         if (!NT_SUCCESS(status))
         {
@@ -839,7 +854,7 @@ Return Value:
             &response,
             &reponseLength,
             NULL);
-        if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+        if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT)
         {
             if (status == STATUS_PORT_DISCONNECTED)
             {
@@ -876,6 +891,7 @@ Return Value:
             if (!NT_SUCCESS(status))
             {
                 FltReleaseContext(fileContext);
+                fileContext = NULL;
             }
 
             if (status != STATUS_FLT_CONTEXT_ALREADY_DEFINED)
@@ -936,7 +952,8 @@ Return Value:
         (PFLT_CONTEXT*)&fileContext);
     if (NT_SUCCESS(status))
     {
-        FltReleaseContext((PFLT_CONTEXT)fileContext);
+        FltReleaseContext(fileContext);
+        fileContext = NULL;
     }
 
     return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -976,7 +993,7 @@ Return Value:
     NTSTATUS status = STATUS_SUCCESS;
 
 
-    //  Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
+    // Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
     if ((aData->Iopb->IrpFlags & IRP_PAGING_IO) ||
         (aData->Iopb->IrpFlags & IRP_SYNCHRONOUS_PAGING_IO) ||
         IoGetTopLevelIrp())
@@ -984,8 +1001,8 @@ Return Value:
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
 
-    //  Since Fast I/O operations cannot be queued, we could return 
-    //  FLT_PREOP_SUCCESS_NO_CALLBACK at this point. 
+    // Since Fast I/O operations cannot be queued, we could return 
+    // FLT_PREOP_SUCCESS_NO_CALLBACK at this point. 
     if (!FLT_IS_IRP_OPERATION(aData))
     {
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -1006,8 +1023,8 @@ Return Value:
     try
     {
         //
-        //  If they are trying to read ZERO bytes, then don't do anything and
-        //  we don't need a post-operation callback.
+        // If they are trying to read ZERO bytes, then don't do anything and
+        // we don't need a post-operation callback.
         //
 
         PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
@@ -1038,6 +1055,8 @@ Return Value:
             // It is not life exported file
             leave;
         }
+
+
 
         // Create request
         LIFE_EXPORT_READ_NOTIFICATION_REQUEST request;
@@ -1156,8 +1175,8 @@ Arguments:
     aData - Pointer to the filter callbackData that is passed to us.
     
     aFltObjects - Pointer to the FLT_RELATED_OBJECTS data structure containing
-    opaque handles to this filter, instance, its associated volume and
-    file object.
+                  opaque handles to this filter, instance, its associated volume and
+                  file object.
     
     aCompletionContext - The completion context set in the pre-create routine.
     
@@ -1253,11 +1272,11 @@ Return Value:
             FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_FAST_IO_OPERATION))
         {
             //
-            //  If this is a system buffer, just use the given address because
-            //      it is valid in all thread contexts.
-            //  If this is a FASTIO operation, we can just use the
-            //      buffer (inside a try/except) since we know we are in
-            //      the correct thread context (you can't pend FASTIO's).
+            // If this is a system buffer, just use the given address because
+            // it is valid in all thread contexts.
+            // If this is a FASTIO operation, we can just use the
+            // buffer (inside a try/except) since we know we are in
+            // the correct thread context (you can't pend FASTIO's).
             //
 
             originBuf = iopb->Parameters.Read.ReadBuffer;
@@ -1265,10 +1284,10 @@ Return Value:
         else
         {
             //
-            //  They don't have a MDL and this is not a system buffer
-            //  or a fastio so this is probably some arbitrary user
-            //  buffer.  We can not do the processing at DPC level so
-            //  try and get to a safe IRQL so we can do the processing.
+            // They don't have a MDL and this is not a system buffer
+            // or a fastio so this is probably some arbitrary user
+            // buffer.  We can not do the processing at DPC level so
+            // try and get to a safe IRQL so we can do the processing.
             //
 
             if (FltDoCompletionProcessingWhenSafe(aData,
@@ -1279,9 +1298,9 @@ Return Value:
                 &retValue))
             {
                 //
-                //  This operation has been moved to a safe IRQL, the called
-                //  routine will do (or has done) the freeing so don't do it
-                //  in our routine.
+                // This operation has been moved to a safe IRQL, the called
+                // routine will do (or has done) the freeing so don't do it
+                // in our routine.
                 //
 
                 cleanupAllocatedBuffer = FALSE;
@@ -1289,12 +1308,12 @@ Return Value:
             else
             {
                 //
-                //  We are in a state where we can not get to a safe IRQL and
-                //  we do not have a MDL.  There is nothing we can do to safely
-                //  copy the data back to the users buffer, fail the operation
-                //  and return.  This shouldn't ever happen because in those
-                //  situations where it is not safe to post, we should have
-                //  a MDL.
+                // We are in a state where we can not get to a safe IRQL and
+                // we do not have a MDL.  There is nothing we can do to safely
+                // copy the data back to the users buffer, fail the operation
+                // and return.  This shouldn't ever happen because in those
+                // situations where it is not safe to post, we should have
+                // a MDL.
                 //
 
                 aData->IoStatus.Status = STATUS_UNSUCCESSFUL;
@@ -1305,9 +1324,9 @@ Return Value:
         }
 
         //
-        //  We either have a system buffer or this is a fastio operation
-        //  so we are in the proper context.  Copy the data handling an
-        //  exception.
+        // We either have a system buffer or this is a fastio operation
+        // so we are in the proper context.  Copy the data handling an
+        // exception.
         //
 
         try
@@ -1316,19 +1335,6 @@ Return Value:
             {
                 if (originBuf != NULL)
                 {
-                    // OLD CODE
-                    // /*ULONG copySize = aData->IoStatus.Information;
-                    // if (copySize > p2pContext->Buffer.BufferSize)
-                    // {
-                    //     copySize = p2pContext->Buffer.BufferSize;
-                    // }*/
-
-                    // ULONG copySize = p2pContext->Buffer.BufferSize;
-                    // RtlCopyMemory(originBuf, p2pContext->Buffer.BufferPtr, copySize);
-                    // // memset(originBuf, 'c', aData->IoStatus.Information);
-
-                    // FltSetCallbackDataDirty(aData);
-
                     ULONG copySize = (ULONG)aData->IoStatus.Information;
                     if (copySize > p2pContext->Buffer.BufferSize)
                     {
@@ -1350,7 +1356,7 @@ Return Value:
         except (EXCEPTION_EXECUTE_HANDLER)
         {
             //
-            //  The copy failed, return an error, failing the operation.
+            // The copy failed, return an error, failing the operation.
             //
 
             aData->IoStatus.Status = GetExceptionCode();
@@ -1406,12 +1412,12 @@ Return Value:
                 }
             }
 
-            /*if (p2pContext != NULL)
+            if (p2pContext != NULL)
             {
                 FltReleaseContext(p2pContext->VolumeContext);
 
                 ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
-            }*/
+            }
         }
 
         if (fileContext != NULL)
@@ -1438,15 +1444,14 @@ AA_ChangePostReadBuffersWhenSafe(
 
     if (aData == NULL)
     {
-        return FLT_POSTOP_FINISHED_PROCESSING; // STATUS_INVALID_PARAMETER_1;
+        return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
     PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
-
     PAA_PRE_2_POST_READ_CONTEXT p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)aCompletionContext;
     if (p2pContext == NULL)
     {
-        return FLT_POSTOP_FINISHED_PROCESSING; // STATUS_INVALID_PARAMETER_3;
+        return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
     FLT_ASSERT(aData->IoStatus.Information != 0);
@@ -1459,7 +1464,7 @@ AA_ChangePostReadBuffersWhenSafe(
     if (!NT_SUCCESS(status))
     {
         //
-        //  If we can't lock the buffer, fail the operation
+        // If we can't lock the buffer, fail the operation
         //
         aData->IoStatus.Status = status;
         aData->IoStatus.Information = 0;
@@ -1467,14 +1472,14 @@ AA_ChangePostReadBuffersWhenSafe(
     else
     {
         //
-        //  Get a system address for this buffer.
+        // Get a system address for this buffer
         //
         PVOID originBuffer = MmGetSystemAddressForMdlSafe(iopb->Parameters.Read.MdlAddress,
             NormalPagePriority | MdlMappingNoExecute);
         if (originBuffer == NULL)
         {
             //
-            //  If we couldn't get a SYSTEM buffer address, fail the operation
+            // If we couldn't get a SYSTEM buffer address, fail the operation
             //
             aData->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
             aData->IoStatus.Information = 0;
@@ -1482,24 +1487,12 @@ AA_ChangePostReadBuffersWhenSafe(
         else
         {
             //
-            //  Copy the data to the original buffer.  Note that we
-            //  don't need a try/except because we will always have a system
-            //  buffer address.
+            // Copy the data to the original buffer.  Note that we
+            // don't need a try/except because we will always have a system
+            // buffer address.
             //
             if (p2pContext != NULL && originBuffer != NULL)
             {
-                // OLD SOURCE CODE
-                // /*ULONG copySize = aData->IoStatus.Information;
-                // if (copySize > p2pContext->Buffer.BufferSize)
-                // {
-                //     copySize = p2pContext->Buffer.BufferSize;
-                // }*/
-
-                // ULONG copySize = p2pContext->Buffer.BufferSize;
-                // RtlCopyMemory(originBuffer, p2pContext->Buffer.BufferPtr, copySize);
-                // // memset(originBuffer, 'c', aData->IoStatus.Information);
-                // FltSetCallbackDataDirty(aData);
-
                 ULONG copySize = (ULONG)aData->IoStatus.Information;
                 if (copySize > p2pContext->Buffer.BufferSize)
                 {
@@ -1573,11 +1566,12 @@ AA_ChangePostReadBuffersWhenSafe(
         fileContext = NULL;
     }
 
-    /*if (p2pContext != NULL)
+    if (p2pContext != NULL)
     {
-    FltReleaseContext(p2pContext->VolumeContext);
-    ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
-    }*/
+        FltReleaseContext(p2pContext->VolumeContext);
+ 
+        ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
+    }
 
     return FLT_POSTOP_FINISHED_PROCESSING;
 }
@@ -1658,26 +1652,26 @@ AA_CloseCommunicationPort(
     PFLT_PORT *serverPort = NULL;
     switch (aConnectionType)
     {
-    case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
-    {
-        serverPort = &GlobalData.ServerPortCreate;
-        break;
-    }
-    case LIFE_EXPORT_READ_CONNECTION_TYPE:
-    {
-        serverPort = &GlobalData.ServerPortRead;
-        break;
-    }
-    case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
-    {
-        serverPort = &GlobalData.ServerPortControl;
-        break;
-    }
-    default:
-    {
-        FLT_ASSERTMSG("No such connection type\n", FALSE);
-        return STATUS_INVALID_PARAMETER;
-    }
+        case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+        {
+            serverPort = &GlobalData.ServerPortCreate;
+            break;
+        }
+        case LIFE_EXPORT_READ_CONNECTION_TYPE:
+        {
+            serverPort = &GlobalData.ServerPortRead;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            serverPort = &GlobalData.ServerPortControl;
+            break;
+        }
+        default:
+        {
+            FLT_ASSERTMSG("No such connection type\n", FALSE);
+            return STATUS_INVALID_PARAMETER;
+        }
     }
 
     if (serverPort == NULL)
@@ -1709,15 +1703,15 @@ AA_SendUnloadingMessageToUserMode(
 
 Routine Description:
 
-This routine sends unloading message to the user program.
+    This routine sends unloading message to the user program.
 
 Arguments:
 
-None.
+    None
 
 Return Value:
 
-The return value is the status of the operation.
+    The return value is the status of the operation.
 
 --*/
 {
@@ -1805,17 +1799,17 @@ AA_FileContextCleanup(
 
 Routine Description:
 
-This routine is called whenever the file context is about to be destroyed.
-Typically we need to clean the data structure inside it.
+    This routine is called whenever the file context is about to be destroyed.
+    Typically we need to clean the data structure inside it.
 
 Arguments:
 
-aContext - Pointer to the PAA_FILE_CONTEXT data structure.
-aContextType - This value should be FLT_FILE_CONTEXT.
+    aContext - Pointer to the PAA_FILE_CONTEXT data structure.
+    aContextType - This value should be FLT_FILE_CONTEXT.
 
 Return Value:
 
-None
+    None
 
 --*/
 {
@@ -1956,32 +1950,34 @@ AA_DisconnectNotifyCallback(
 
     switch (*connectionType)
     {
-    case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
-    {
-        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
-        GlobalData.ClientPortCreate = NULL;
-        break;
-    }
-    case LIFE_EXPORT_READ_CONNECTION_TYPE:
-    {
-        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
-        GlobalData.ClientPortRead = NULL;
-        break;
-    }
-    case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
-    {
-        FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortControl);
-        GlobalData.ClientPortControl = NULL;
-        break;
-    }
-    default:
-    {
-        return;
-    }
+        case LIFE_EXPORT_CREATE_CONNECTION_TYPE:
+        {
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+            GlobalData.ClientPortCreate = NULL;
+            break;
+        }
+        case LIFE_EXPORT_READ_CONNECTION_TYPE:
+        {
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+            GlobalData.ClientPortRead = NULL;
+            break;
+        }
+        case LIFE_EXPORT_CONTROL_CONNECTION_TYPE:
+        {
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortControl);
+            GlobalData.ClientPortControl = NULL;
+            break;
+        }
+        default:
+        {
+            return;
+        }
     }
 
     ExFreePoolWithTag(connectionType, AA_LIFE_EXPORT_CONNECTION_CONTEXT_TAG);
     connectionType = NULL;
+
+    return;
 }
 
 
@@ -2023,11 +2019,36 @@ AA_CopyUserModeBufferToKernelByProcessId(
     }
     
     KAPC_STATE state = { 0 };
+    PVOID tempBuffer = NULL;
+
     try
     {
+        // Allocate tempBuffer
+        tempBuffer = ExAllocatePoolWithTag(NonPagedPool, aCopySize, 'temp');
+        if (tempBuffer == NULL)
+        {
+            if (workingProcess != NULL)
+            {
+                FltObjectDereference(workingProcess);
+                workingProcess = NULL;
+            }
+
+            return STATUS_MEMORY_NOT_ALLOCATED;
+        }
+
+        RtlZeroMemory(tempBuffer, aCopySize);
+
+        // Copy origin driver data to the temp buffer
+        RtlCopyMemory(tempBuffer, aDestinationKernelBufferPrt, aCopySize);
+
+
         KeStackAttachProcess(workingProcess, &state);
 
+        // Copy user-mode buffer to driver buffer
         RtlCopyMemory(aDestinationKernelBufferPrt, aSourceUserModeBufferPtr, aCopySize);
+
+        // Copy temp buffer to the user-mode buffer
+        RtlCopyMemory(aSourceUserModeBufferPtr, tempBuffer, aCopySize);
 
         KeUnstackDetachProcess(&state);
 
@@ -2035,6 +2056,13 @@ AA_CopyUserModeBufferToKernelByProcessId(
         {
             FltObjectDereference(workingProcess);
             workingProcess = NULL;
+        }
+
+        // Free temp buffer
+        if (tempBuffer != NULL)
+        {
+            ExFreePoolWithTag(tempBuffer, 'temp');
+            tempBuffer = NULL;
         }
     }
     except(EXCEPTION_EXECUTE_HANDLER)
@@ -2045,6 +2073,13 @@ AA_CopyUserModeBufferToKernelByProcessId(
         {
             FltObjectDereference(workingProcess);
             workingProcess = NULL;
+        }
+
+        // Free usermode buffer
+        if (tempBuffer != NULL)
+        {
+            ExFreePoolWithTag(tempBuffer, 'temp');
+            tempBuffer = NULL;
         }
     }
 
