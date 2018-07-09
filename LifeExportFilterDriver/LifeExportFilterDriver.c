@@ -423,6 +423,18 @@ AA_InstanceSetup(
             leave;
         }
 
+        // Get the disk device object and make sure it is a disk device type and does not
+        // have any of the device characteristics we do not support
+        status = FltGetDiskDeviceObject(aFltObjects->Volume,
+            &deviceObject);
+        if (!NT_SUCCESS(status))
+        {
+            // This is not disk device. We does no support it
+            status = STATUS_FLT_DO_NOT_ATTACH;
+            leave;
+        }
+
+
         // Check if context not created for this volume earlier
         status = FltGetVolumeContext(aFltObjects->Filter,
             aFltObjects->Volume,
@@ -450,6 +462,7 @@ AA_InstanceSetup(
             //
             // We could not allocate a context, quit now
             //
+            status = STATUS_FLT_DO_NOT_ATTACH;
             leave;
         }
 
@@ -463,6 +476,7 @@ AA_InstanceSetup(
             &resultLen);
         if (!NT_SUCCESS(status))
         {
+            status = STATUS_FLT_DO_NOT_ATTACH;
             leave;
         }
 
@@ -482,81 +496,15 @@ AA_InstanceSetup(
         volumeContext->Name.Buffer = NULL;
 
         //
-        // Get the storage device object we want a name for.
+        // Try and get the DOS name. If it succeeds we will have
+        // an allocated name buffer. If not, it will be NULL
         //
-        status = FltGetDiskDeviceObject(aFltObjects->Volume,
-            &deviceObject);
-        if (NT_SUCCESS(status))
+        status = IoVolumeDeviceToDosName(deviceObject, &volumeContext->Name);
+        if (!NT_SUCCESS(status))
         {
-            //
-            // Try and get the DOS name. If it succeeds we will have
-            // an allocated name buffer. If not, it will be NULL
-            //
-            status = IoVolumeDeviceToDosName(deviceObject, &volumeContext->Name);
-        }
-        else
-        {
-            //
-            // If we could not get a DOS name, get the NT name.
-            //
-
-            FLT_ASSERT(volumeContext->Name.Buffer == NULL);
-
-            //
-            // Figure out which name to use from the properties
-            //
-            PUNICODE_STRING workingName;
-            if (volProp->RealDeviceName.Length > 0)
-            {
-                workingName = &volProp->RealDeviceName;
-            }
-            else if (volProp->FileSystemDeviceName.Length > 0)
-            {
-                workingName = &volProp->FileSystemDeviceName;
-            }
-            else
-            {
-                //
-                // No name, don't save the context
-                //
-
-                status = STATUS_FLT_DO_NOT_ATTACH;
-                leave;
-            }
-
-            //
-            // Get size of buffer to allocate.  This is the length of the
-            // string plus room for a trailing colon.
-            //
-
-            USHORT size = workingName->Length + sizeof(WCHAR);
-
-            //
-            // Now allocate a buffer to hold this name
-            //
-
-            volumeContext->Name.Buffer = ExAllocatePoolWithTag(NonPagedPool,
-                size,
-                AA_LIFE_EXPORT_VOLUME_NAME_TAG);
-            if (volumeContext->Name.Buffer == NULL)
-            {
-                status = STATUS_INSUFFICIENT_RESOURCES;
-                leave;
-            }
-
-            //
-            // Init the rest of the fields
-            //
-
-            volumeContext->Name.Length = 0;
-            volumeContext->Name.MaximumLength = size;
-
-            // Copy the name
-            RtlCopyUnicodeString(&volumeContext->Name,
-                workingName);
-
-            // Put a trailing colon to make the display look good
-            RtlAppendUnicodeToString(&volumeContext->Name, L":");
+            // Unable to get device name
+            status = STATUS_FLT_DO_NOT_ATTACH;
+            leave;
         }
 
         // Set context
@@ -564,11 +512,14 @@ AA_InstanceSetup(
             FLT_SET_CONTEXT_KEEP_IF_EXISTS,
             volumeContext,
             NULL);
-
         // It is OK for the context to already be defined
         if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
         {
             status = STATUS_SUCCESS;
+        }
+        else
+        {
+            status = STATUS_FLT_DO_NOT_ATTACH;
         }
     }
     finally
