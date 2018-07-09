@@ -442,6 +442,13 @@ AA_InstanceSetup(
             leave;
         }
 
+        if (FlagOn(deviceObject->Characteristics, FILE_FLOPPY_DISKETTE))
+        {
+            // Not supported
+            status = STATUS_FLT_DO_NOT_ATTACH;
+            leave;
+        }
+
         // Check if context not created for this volume earlier
         status = FltGetVolumeContext(aFltObjects->Filter,
             aFltObjects->Volume,
