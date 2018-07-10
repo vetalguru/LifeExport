@@ -793,6 +793,22 @@ Return Value:
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
+    // Check volume context
+    PFLT_CONTEXT volContext = NULL;
+    status = FltGetVolumeContext(aFltObjects->Filter,
+        aFltObjects->Volume,
+        &volContext);
+    if (!NT_SUCCESS(status))
+    {
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    if (volContext != NULL)
+    {
+        FltReleaseContext(volContext);
+        volContext = NULL;
+    }
+
     //
     // Get FileID and send it to usermode
     //
