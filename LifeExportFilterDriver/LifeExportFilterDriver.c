@@ -813,62 +813,62 @@ Return Value:
         return FLT_POSTOP_FINISHED_PROCESSING;
     }
 
-    PAA_FILE_CONTEXT fileContext = NULL;
-    status = FltGetFileContext(aData->Iopb->TargetInstance,
-        aData->Iopb->TargetFileObject,
-        (PFLT_CONTEXT*)&fileContext);
-    if (status == STATUS_NOT_FOUND)
+    // Get opened file ID
+    AA_FILE_ID_INFO fileId = { 0 };
+    status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &fileId);
+    if (!NT_SUCCESS(status))
     {
-        LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST request = { 0 };
-        AA_FILE_ID_INFO fileId = { 0 };
-        status = AA_GetFileId(aFltObjects->Instance, aFltObjects->FileObject, &fileId);
-        if (!NT_SUCCESS(status))
+        if (status == STATUS_POSSIBLE_DEADLOCK)
         {
-            if (status == STATUS_POSSIBLE_DEADLOCK)
-            {
-                AA_SET_INVALID_FILE_REFERENCE(fileId);
-            }
-            else
-            {
-                return FLT_POSTOP_FINISHED_PROCESSING;
-            }
+            AA_SET_INVALID_FILE_REFERENCE(fileId);
         }
-
-        RtlCopyMemory(&request.FileId, &fileId, sizeof(fileId));
-
-        LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE response = { 0 };
-        ULONG reponseLength = sizeof(response);
-
-        status = FltSendMessage(GlobalData.FilterHandle,
-            &GlobalData.ClientPortCreate,
-            &request,
-            sizeof(request),
-            &response,
-            &reponseLength,
-            NULL);
-        if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT)
+        else
         {
-            if (status == STATUS_PORT_DISCONNECTED)
-            {
-                FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
-                GlobalData.ClientPortCreate = NULL;
-                return FLT_POSTOP_FINISHED_PROCESSING;
-            }
-
-            if (status != STATUS_TIMEOUT)
-            {
-                return FLT_POSTOP_FINISHED_PROCESSING;
-            }
-
             return FLT_POSTOP_FINISHED_PROCESSING;
         }
+    }
 
-        if (response.ConnectionResult == CREATE_RESULT_EXPORT_FILE)
+    // Send file ID to user-mode
+    LIFE_EXPORT_CREATE_NOTIFICATION_REQUEST request = { 0 };
+    RtlCopyMemory(&request.FileId, &fileId, sizeof(fileId));
+
+    LIFE_EXPORT_CREATE_NOTIFICATION_RESPONSE response = { 0 };
+    ULONG reponseLength = sizeof(response);
+
+    status = FltSendMessage(GlobalData.FilterHandle,
+        &GlobalData.ClientPortCreate,
+        &request,
+        sizeof(request),
+        &response,
+        &reponseLength,
+        NULL);
+    if (!NT_SUCCESS(status) || status == STATUS_TIMEOUT)
+    {
+        if (status == STATUS_PORT_DISCONNECTED)
         {
-            // Need to create a context for the exported file if it is not created
+            FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortCreate);
+            GlobalData.ClientPortCreate = NULL;
+        }
+
+        return FLT_POSTOP_FINISHED_PROCESSING;
+    }
+
+    // Process  user-mode responce
+    if (response.ConnectionResult == CREATE_RESULT_EXPORT_FILE)
+    {
+        // Check if file context exists
+        PAA_FILE_CONTEXT fileContext = NULL;
+        status = FltGetFileContext(aData->Iopb->TargetInstance,
+            aData->Iopb->TargetFileObject,
+            (PFLT_CONTEXT*)&fileContext);
+        if (status == STATUS_NOT_FOUND)
+        {
+            // Create new File Context and attach it to this file
+
             status = AA_CreateFileContext(&fileContext);
             if (!NT_SUCCESS(status))
             {
+                // Unable to create file context
                 return FLT_POSTOP_FINISHED_PROCESSING;
             }
 
