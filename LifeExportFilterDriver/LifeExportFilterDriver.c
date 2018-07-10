@@ -953,9 +953,25 @@ Return Value:
 
     PAGED_CODE();
 
+    // Check volume context
+    PFLT_CONTEXT volContext = NULL;
+    NTSTATUS status = FltGetVolumeContext(aFltObjects->Filter,
+        aFltObjects->Volume,
+        &volContext);
+    if (!NT_SUCCESS(status))
+    {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
+    }
+
+    if (volContext != NULL)
+    {
+        FltReleaseContext(volContext);
+        volContext = NULL;
+    }
+
     // Check file context and release it if it is present
     PAA_FILE_CONTEXT fileContext = NULL;
-    NTSTATUS status = FltGetFileContext(aFltObjects->Instance,
+    status = FltGetFileContext(aFltObjects->Instance,
         aFltObjects->FileObject,
         (PFLT_CONTEXT*)&fileContext);
     if (NT_SUCCESS(status))
