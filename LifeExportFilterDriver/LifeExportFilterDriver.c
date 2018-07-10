@@ -1080,8 +1080,6 @@ Return Value:
             leave;
         }
 
-
-
         // Create request
         LIFE_EXPORT_READ_NOTIFICATION_REQUEST request;
         RtlZeroMemory(&request, sizeof(request));
@@ -1222,6 +1220,7 @@ Return Value:
     FLT_ASSERT(!FlagOn(aFlags, FLTFL_POST_OPERATION_DRAINING));
 
     PAA_FILE_CONTEXT fileContext = NULL;
+    PAA_VOLUME_CONTEXT volContext = NULL;
     try
     {
         if (!FLT_IS_IRP_OPERATION(aData))
@@ -1249,6 +1248,14 @@ Return Value:
         }
 
         if (GlobalData.ClientPortRead == NULL)
+        {
+            leave;
+        }
+
+        status = FltGetVolumeContext(aFltObjects->Filter,
+            aFltObjects->Volume,
+            (PFLT_CONTEXT*)&volContext);
+        if (!NT_SUCCESS(status))
         {
             leave;
         }
@@ -1448,6 +1455,12 @@ Return Value:
         {
             FltReleaseContext(fileContext);
             fileContext = NULL;
+        }
+
+        if (volContext != NULL)
+        {
+            FltReleaseContext(volContext);
+            volContext = NULL;
         }
     }
 
