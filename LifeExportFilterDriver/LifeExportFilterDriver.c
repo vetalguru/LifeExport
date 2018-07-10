@@ -1139,12 +1139,12 @@ Return Value:
             leave;
         }
 
-        /*if (response.UserBuffer.BufferPtr == NULL ||
+        if (response.UserBuffer.BufferPtr == NULL ||
             response.UserBuffer.BufferSize == 0LU)
         {
             retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
             leave;
-        }*/
+        }
 
         PAA_PRE_2_POST_READ_CONTEXT p2pContext = NULL;
         p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)ExAllocateFromNPagedLookasideList(&GlobalData.Pre2PostContextList);
