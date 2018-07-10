@@ -533,14 +533,17 @@ AA_InstanceSetup(
             FLT_SET_CONTEXT_KEEP_IF_EXISTS,
             volumeContext,
             NULL);
-        // It is OK for the context to already be defined
-        if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
+        if (!NT_SUCCESS(status))
         {
-            status = STATUS_SUCCESS;
-        }
-        else
-        {
-            status = STATUS_FLT_DO_NOT_ATTACH;
+            // It is OK for the context to already be defined
+            if (status == STATUS_FLT_CONTEXT_ALREADY_DEFINED)
+            {
+                status = STATUS_SUCCESS;
+            }
+            else
+            {
+                status = STATUS_FLT_DO_NOT_ATTACH;
+            }
         }
     }
     finally
@@ -1157,6 +1160,7 @@ Return Value:
         p2pContext->Buffer.CurrentProcessId = response.UserBuffer.CurrentProcessId;
 
         p2pContext->VolumeContext = volContext;
+        FltReferenceContext(volContext);
 
         *aCompletionContext = p2pContext;
     }
@@ -1220,7 +1224,6 @@ Return Value:
     FLT_ASSERT(!FlagOn(aFlags, FLTFL_POST_OPERATION_DRAINING));
 
     PAA_FILE_CONTEXT fileContext = NULL;
-    PAA_VOLUME_CONTEXT volContext = NULL;
     try
     {
         if (!FLT_IS_IRP_OPERATION(aData))
@@ -1248,14 +1251,6 @@ Return Value:
         }
 
         if (GlobalData.ClientPortRead == NULL)
-        {
-            leave;
-        }
-
-        status = FltGetVolumeContext(aFltObjects->Filter,
-            aFltObjects->Volume,
-            (PFLT_CONTEXT*)&volContext);
-        if (!NT_SUCCESS(status))
         {
             leave;
         }
@@ -1456,12 +1451,6 @@ Return Value:
             FltReleaseContext(fileContext);
             fileContext = NULL;
         }
-
-        if (volContext != NULL)
-        {
-            FltReleaseContext(volContext);
-            volContext = NULL;
-        }
     }
 
     return retValue;
@@ -1606,7 +1595,6 @@ AA_ChangePostReadBuffersWhenSafe(
     if (p2pContext != NULL)
     {
         FltReleaseContext(p2pContext->VolumeContext);
- 
         ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
     }
 
