@@ -1374,7 +1374,7 @@ Return Value:
                         copySize);
                     if (NT_SUCCESS(status))
                     {
-                        FltSetCallbackDataDirty(aData);
+                        // Copy buffers error
                     }
                 }
             }
@@ -1532,7 +1532,7 @@ AA_ChangePostReadBuffersWhenSafe(
                     copySize);
                 if (NT_SUCCESS(status))
                 {
-                    FltSetCallbackDataDirty(aData);
+                    // Copy buffers error
                 }
             }
         }
