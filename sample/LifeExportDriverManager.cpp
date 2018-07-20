@@ -413,14 +413,9 @@ namespace LifeExportDriverManagement
                 {
                     case READ_NOTIFICATION_PRE_READ_TYPE:
                     {
-                        IDriverHandler::LIFE_EXPORT_USER_BUFFER userBuffer = { 0 };
-                        userBuffer.BufferPtr = requestMessage.Notification.UserBuffer.BufferPtr;
-                        userBuffer.BufferSize = requestMessage.Notification.UserBuffer.BufferSize;
-
                         result = aContext->DriverHandler->PreReadingLifeTrackingFileCallback(&requestMessage.Notification.FileId,
                             &requestMessage.Notification.BlockFileOffset,
-                            &requestMessage.Notification.BlockLength,
-                            userBuffer);
+                            &requestMessage.Notification.BlockLength);
                         if (result == S_OK)
                         {
                             // Send answer
@@ -429,9 +424,6 @@ namespace LifeExportDriverManagement
                             replyMessage.ReplyHeader.Status = result;
 
                             replyMessage.ResponseData.ReadResultAction = SUCCESS_WITH_POST_CALLBACK;
-
-                            replyMessage.ResponseData.UserBuffer.BufferPtr = userBuffer.BufferPtr;
-                            replyMessage.ResponseData.UserBuffer.BufferSize = userBuffer.BufferSize;
 
                             // Get current process handle
                             replyMessage.ResponseData.UserBuffer.CurrentProcessId = ::GetCurrentProcessId();

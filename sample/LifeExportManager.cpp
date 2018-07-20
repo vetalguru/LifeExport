@@ -81,8 +81,7 @@ namespace LifeExportManagement
 
     HRESULT LifeExportManager::PreReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
         const PULONGLONG aBlockFileOffset,
-        const PULONGLONG aBlockLength,
-        IDriverHandler::LIFE_EXPORT_USER_BUFFER &aUserBuffer)
+        const PULONGLONG aBlockLength)
     {
         if (aFileIdInfo == NULL)
         {
@@ -107,32 +106,13 @@ namespace LifeExportManagement
 
         // TODO: Need download part of file HERE if need
 
-        // ONLY FOR TEST======================
-        char *buffer = new (std::nothrow) char[*aBlockLength];
-        if (buffer)
-        {
-            std::wcout << L"user buffer pointer: " << std::hex << (void*)buffer;
-            std::wcout << L" user buffer size: " << std::dec << *aBlockLength << std::endl;
-
-            memset(buffer, 'c', *aBlockLength);
-
-            std::string buff(buffer, *aBlockLength);
-
-            std::cout << "BUFFER: " << buff.c_str() << std::endl;
-
-            aUserBuffer.BufferPtr = buffer;
-            aUserBuffer.BufferSize = (ULONG)*aBlockLength;
-        }
-
-        //====================================
-
         return S_OK;
     }
 
     HRESULT LifeExportManager::PostReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
         const PULONGLONG aBlockFileOffset,
         const PULONGLONG aBlockLength,
-        IDriverHandler::LIFE_EXPORT_USER_BUFFER &aUserBuffer)
+        IDriverHandler::LIFE_EXPORT_USER_BUFFER &aKernelBuffer)
     {
         if (aFileIdInfo == NULL)
         {
@@ -158,19 +138,19 @@ namespace LifeExportManagement
         // TODO: Need to send buffer with changes HERE if need
 
         // ONLY FOR TEST======================
-        if (aUserBuffer.BufferPtr)
+        if (aKernelBuffer.BufferPtr)
         {
-            std::wcout << L"POST user buffer pointer: " << std::hex << aUserBuffer.BufferPtr;
-            std::wcout << L" user buffer size: " << std::dec << aUserBuffer.BufferSize << std::endl;
+            std::wcout << L"POST user buffer pointer: " << std::hex << aKernelBuffer.BufferPtr;
+            std::wcout << L" user buffer size: " << std::dec << aKernelBuffer.BufferSize << std::endl;
 
-            std::string str((char*)aUserBuffer.BufferPtr, aUserBuffer.BufferSize);
-
-            std::cout << "Buffer: " << str.c_str() << std::endl;
-
-            delete[] aUserBuffer.BufferPtr;
-
-            aUserBuffer.BufferPtr = nullptr;
-            aUserBuffer.BufferSize = 0;
+            try
+            {
+                memset(aKernelBuffer.BufferPtr, 'X', aKernelBuffer.BufferSize);
+            }
+            catch (const std::exception&)
+            {
+                std::wcout << L"ERROR!!!!!!!!!!!!" << std::endl;
+            }
         }
 
         //====================================

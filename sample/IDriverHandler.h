@@ -25,8 +25,7 @@ namespace LifeExportDriverManagement
 
             virtual HRESULT PreReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
                                                 const PULONGLONG aBlockFileOffset,
-                                                const PULONGLONG aBlockLength,
-                                                IDriverHandler::LIFE_EXPORT_USER_BUFFER& aReadBuffer) = 0;
+                                                const PULONGLONG aBlockLength) = 0;
 
             virtual HRESULT PostReadingLifeTrackingFileCallback(const PAA_FILE_ID_INFO aFileIdInfo,
                                                 const PULONGLONG aBlockFileOffset,

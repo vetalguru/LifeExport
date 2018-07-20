@@ -1018,8 +1018,178 @@ Return Value:
 {
     FLT_PREOP_CALLBACK_STATUS retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
     NTSTATUS status = STATUS_SUCCESS;
+    PAA_VOLUME_CONTEXT volumeContext = NULL;
+    ULONG readLen = aData->Iopb->Parameters.Read.Length;
+    PVOID newBuffer = NULL;
+    PMDL newMdl = NULL;
+    PAA_PRE_2_POST_READ_CONTEXT p2pContext = NULL;
+    PAA_FILE_CONTEXT fileContext = NULL;
 
 
+    try
+    {
+        if (aData->Iopb->Parameters.Read.Length == 0)
+        {
+            leave;
+        }
+
+        if (GlobalData.ServerPortRead == NULL)
+        {
+            leave;
+        }
+
+        if (GlobalData.ClientPortRead == NULL)
+        {
+            leave;
+        }
+
+        status = FltGetVolumeContext(aFltObjects->Filter, aFltObjects->Volume, &volumeContext);
+        if (!NT_SUCCESS(status))
+        {
+            leave;
+        }
+
+        status = FltGetFileContext(aData->Iopb->TargetInstance,
+            aData->Iopb->TargetFileObject,
+            (PFLT_CONTEXT*)&fileContext);
+        if (!NT_SUCCESS(status))
+        {
+            // It is not life exported file
+            leave;
+        }
+
+        if (FlagOn(IRP_NOCACHE, aData->Iopb->IrpFlags))
+        {
+            readLen = (ULONG)ROUND_TO_SIZE(readLen, volumeContext->SectorSize);
+        }
+
+        // TODO: Need to send the message to user-mode
+
+        // Create request
+        LIFE_EXPORT_READ_NOTIFICATION_REQUEST request = { 0 };
+        RtlCopyMemory(&request.FileId, &fileContext->FileID, sizeof(fileContext->FileID));
+        request.BlockFileOffset = aData->Iopb->Parameters.Read.ByteOffset.QuadPart;
+        request.BlockLength = readLen;
+        request.RequestType = READ_NOTIFICATION_PRE_READ_TYPE;
+
+        // Create responce
+        LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+        ULONG responseLength = sizeof(response);
+
+        status = FltSendMessage(GlobalData.FilterHandle,
+            &GlobalData.ClientPortRead,
+            &request,
+            sizeof(request),
+            &response,
+            &responseLength,
+            NULL);
+        if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+        {
+            if (status == STATUS_PORT_DISCONNECTED)
+            {
+                FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+                GlobalData.ClientPortRead = NULL;
+            }
+
+            leave;
+        }
+
+        switch (response.ReadResultAction)
+        {
+            case SUCCESS_WITH_NO_POST_CALLBACK:
+            {
+                retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+                break;
+            }
+            case SUCCESS_WITH_POST_CALLBACK:
+            {
+                newBuffer = FltAllocatePoolAlignedWithTag(aFltObjects->Instance,
+                    NonPagedPool,
+                    (SIZE_T)readLen,
+                    'buff');
+                if (newBuffer == NULL)
+                {
+                    leave;
+                }
+
+                RtlZeroMemory(newBuffer, readLen);
+
+                if (FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_IRP_OPERATION))
+                {
+                    newMdl = IoAllocateMdl(newBuffer, readLen, FALSE, FALSE, NULL);
+                    if (newMdl == NULL)
+                    {
+                        leave;
+                    }
+
+                    MmBuildMdlForNonPagedPool(newMdl);
+
+                }
+
+                p2pContext = ExAllocateFromNPagedLookasideList(&GlobalData.Pre2PostContextList);
+                if (p2pContext == NULL)
+                {
+                    leave;
+                }
+
+                aData->Iopb->Parameters.Read.ReadBuffer = newBuffer;
+                aData->Iopb->Parameters.Read.MdlAddress = newMdl;
+                FltSetCallbackDataDirty(aData);
+
+                p2pContext->Buffer.BufferPtr = newBuffer;
+                p2pContext->Buffer.BufferSize = readLen;
+
+                p2pContext->VolumeContext = volumeContext;
+
+                *aCompletionContext = p2pContext;
+
+                retValue = FLT_PREOP_SUCCESS_WITH_CALLBACK;
+
+                break;
+            }
+            case COMPLETE_WITH_NO_POST_CALLBACK:
+            {
+                retValue = FLT_PREOP_COMPLETE;
+                break;
+            }
+            default:
+            {
+                retValue = FLT_PREOP_SUCCESS_NO_CALLBACK;
+            }
+        }
+    }
+    finally
+    {
+        if (fileContext != NULL)
+        {
+            FltReleaseContext(fileContext);
+            fileContext = NULL;
+        }
+
+        if (retValue != FLT_PREOP_SUCCESS_WITH_CALLBACK)
+        {
+            if (newBuffer != NULL)
+            {
+                FltFreePoolAlignedWithTag(aFltObjects->Instance,
+                        newBuffer,
+                        'buff');
+                newBuffer = NULL;
+            }
+
+            if (newMdl != NULL)
+            {
+                IoFreeMdl(newMdl);
+            }
+
+            if (volumeContext != NULL)
+            {
+                FltReferenceContext(volumeContext);
+                volumeContext = NULL;
+            }
+        }
+    }
+
+    /*
     // Skip IRP_PAGING_IO, IRP_SYNCHRONOUS_PAGING_IO and TopLevelIrp
     if ((aData->Iopb->IrpFlags & IRP_PAGING_IO) ||
         (aData->Iopb->IrpFlags & IRP_SYNCHRONOUS_PAGING_IO) ||
@@ -1029,7 +1199,7 @@ Return Value:
     }
 
     // Since Fast I/O operations cannot be queued, we could return 
-    // FLT_PREOP_SUCCESS_NO_CALLBACK at this point. 
+    // FLT_PREOP_SUCCESS_NO_CALLBACK at this point.
     if (!FLT_IS_IRP_OPERATION(aData))
     {
         return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -1177,7 +1347,7 @@ Return Value:
             FltReleaseContext(volContext);
             volContext = NULL;
         }
-    }
+    }*/
 
     return retValue;
 }
@@ -1214,7 +1384,143 @@ Return Value:
     
 --*/
 {
+    PVOID originBuffer = NULL;
+    PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
     FLT_POSTOP_CALLBACK_STATUS retValue = FLT_POSTOP_FINISHED_PROCESSING;
+    PAA_PRE_2_POST_READ_CONTEXT p2pContext = aCompletionContext;
+    BOOLEAN cleantupAllocateBuffer = TRUE;
+
+    FLT_ASSERT(!FlagOn(aFlags, FLTFL_POST_OPERATION_DRAINING));
+
+    try
+    {
+        if (p2pContext == NULL)
+        {
+            leave;
+        }
+
+        if (!NT_SUCCESS(aData->IoStatus.Status) ||
+            (aData->IoStatus.Information == 0))
+        {
+            leave;
+        }
+
+        if (iopb->Parameters.Read.MdlAddress != NULL)
+        {
+            FLT_ASSERT(((PMDL)iopb->Parameters.Read.MdlAddress)->Next == NULL);
+
+            originBuffer = MmGetSystemAddressForMdlSafe(iopb->Parameters.Read.MdlAddress,
+                    NormalPagePriority | MdlMappingNoExecute);
+            if (originBuffer == NULL)
+            {
+                aData->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                aData->IoStatus.Information = 0;
+
+                leave;
+            }
+        }
+        else if (FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_SYSTEM_BUFFER) ||
+                 FlagOn(aData->Flags, FLTFL_CALLBACK_DATA_FAST_IO_OPERATION))
+        {
+            originBuffer = iopb->Parameters.Read.ReadBuffer;
+        }
+        else
+        {
+            if (FltDoCompletionProcessingWhenSafe(aData,
+                        aFltObjects,
+                        aCompletionContext,
+                        aFlags,
+                        AA_ChangePostReadBuffersWhenSafe,
+                        &retValue))
+            {
+                cleantupAllocateBuffer = FALSE;
+            }
+            else
+            {
+                aData->IoStatus.Status = STATUS_UNSUCCESSFUL;
+                aData->IoStatus.Information = 0;
+            }
+
+            leave;
+        }
+
+        try
+        {
+            // TODO: Send message to user-mode
+            // Create request
+            LIFE_EXPORT_READ_NOTIFICATION_REQUEST request = { 0 };
+            request.BlockFileOffset = iopb->Parameters.Read.ByteOffset.QuadPart;
+            request.BlockLength = aData->IoStatus.Information;
+            request.RequestType = READ_NOTIFICATION_POST_READ_TYPE;
+
+            request.UserBuffer.BufferPtr = p2pContext->Buffer.BufferPtr;
+            request.UserBuffer.BufferSize = p2pContext->Buffer.BufferSize;
+
+            request.Status = aData->IoStatus.Status;
+
+            // Create response
+            LIFE_EXPORT_READ_NOTIFICATION_RESPONSE response = { 0 };
+            ULONG responseSize = sizeof(response);
+
+            NTSTATUS status = FltSendMessage(GlobalData.FilterHandle,
+                &GlobalData.ClientPortRead,
+                &request,
+                sizeof(request),
+                &response,
+                &responseSize,
+                NULL);
+            if (!NT_SUCCESS(status) || (status == STATUS_TIMEOUT))
+            {
+                if (status == STATUS_PORT_DISCONNECTED)
+                {
+                    FltCloseClientPort(GlobalData.FilterHandle, &GlobalData.ClientPortRead);
+                    GlobalData.ClientPortRead = NULL;
+                }
+            }
+
+            //memset(p2pContext->Buffer.BufferPtr, 'C', p2pContext->Buffer.BufferSize);
+
+            RtlCopyMemory(originBuffer,
+                    p2pContext->Buffer.BufferPtr,
+                    aData->IoStatus.Information);
+        }
+        except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            aData->IoStatus.Status = GetExceptionCode();
+            aData->IoStatus.Information = 0;
+        }
+
+
+    }
+    finally
+    {
+        if (cleantupAllocateBuffer == TRUE)
+        {
+            if (p2pContext->Buffer.BufferPtr != NULL)
+            {
+                FltFreePoolAlignedWithTag(aFltObjects->Instance,
+                    p2pContext->Buffer.BufferPtr,
+                    'buff');
+                p2pContext->Buffer.BufferPtr = NULL;
+            }
+
+            FltReleaseContext(p2pContext->VolumeContext);
+
+            if (p2pContext != NULL)
+            {
+                ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
+                p2pContext = NULL;
+            }
+        }
+    }
+
+
+
+
+
+
+
+    /*FLT_POSTOP_CALLBACK_STATUS retValue = FLT_POSTOP_FINISHED_PROCESSING;
     PAA_PRE_2_POST_READ_CONTEXT p2pContext = (PAA_PRE_2_POST_READ_CONTEXT)aCompletionContext;
     BOOLEAN cleanupAllocatedBuffer = TRUE;
     PVOID originBuf = NULL;
@@ -1451,7 +1757,7 @@ Return Value:
             FltReleaseContext(fileContext);
             fileContext = NULL;
         }
-    }
+    }*/
 
     return retValue;
 }
@@ -1465,6 +1771,53 @@ AA_ChangePostReadBuffersWhenSafe(
     _In_    FLT_POST_OPERATION_FLAGS aFlags
 )
 {
+    PFLT_IO_PARAMETER_BLOCK iopb = aData->Iopb;
+    PAA_PRE_2_POST_READ_CONTEXT p2pContext = aCompletionContext;
+    PVOID originBuffer = NULL;
+
+    UNREFERENCED_PARAMETER(aFltObjects);
+    UNREFERENCED_PARAMETER(aFlags);
+
+    FLT_ASSERT(aData->IoStatus.Information != 0);
+
+    NTSTATUS status = FltLockUserBuffer(aData);
+    if (!NT_SUCCESS(status))
+    {
+        aData->IoStatus.Status = status;
+        aData->IoStatus.Information = 0;
+    }
+    else
+    {
+        originBuffer = MmGetSystemAddressForMdlSafe(iopb->Parameters.Read.MdlAddress,
+                NormalPagePriority | MdlMappingNoExecute);
+        if (originBuffer == NULL)
+        {
+            aData->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+            aData->IoStatus.Information = 0;
+        }
+        else
+        {
+            memset(p2pContext->Buffer.BufferPtr, 'F', p2pContext->Buffer.BufferSize);
+
+            RtlCopyMemory(originBuffer,
+                    p2pContext->Buffer.BufferPtr,
+                    aData->IoStatus.Information);
+        }
+    }
+
+    FltFreePoolAlignedWithTag(aFltObjects->Instance,
+            p2pContext->Buffer.BufferPtr,
+            'buff');
+
+    FltReleaseContext(p2pContext->VolumeContext);
+
+    ExFreeToNPagedLookasideList(&GlobalData.Pre2PostContextList, p2pContext);
+
+    return FLT_POSTOP_FINISHED_PROCESSING;
+
+
+
+/*  
     UNREFERENCED_PARAMETER(aFltObjects);
     UNREFERENCED_PARAMETER(aFlags);
 
@@ -1599,6 +1952,7 @@ AA_ChangePostReadBuffersWhenSafe(
     }
 
     return FLT_POSTOP_FINISHED_PROCESSING;
+*/
 }
 
 
